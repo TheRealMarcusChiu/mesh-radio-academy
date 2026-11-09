@@ -21,6 +21,19 @@ test('Lab A page embeds the sandbox, cites its sources and states the reference 
   for (const h of ['Setup', 'Change one thing', 'Expect', 'If you see something else']) assert.match(page, new RegExp(h));
 });
 
+test('narrow-screen guards: tables scroll in labelled keyboard regions, citation groups stay short (Q-RF-01)', () => {
+  const c = read('src/components/RfSandbox.astro');
+  const tables = c.match(/<table class="rf-table">/g) ?? [];
+  const wrapped = c.match(/<div class="rf-scroll" role="region" tabindex="0" aria-label="[^"]+">\s*<table class="rf-table">/g) ?? [];
+  assert.ok(tables.length >= 2);
+  assert.equal(wrapped.length, tables.length, 'every worked-example table sits in a scroll region');
+  assert.match(c, /\.rf-scroll \{[^}]*overflow-x: auto/);
+  // Cite renders its group nowrap, so long groups on this page would widen the page on phones.
+  for (const [, ids] of read('src/content/docs/labs/rf-sandbox.mdx').matchAll(/<Cite ids="([^"]+)"/g)) {
+    assert.ok(ids.split(/\s+/).length <= 3, `citation group too long for 320px: ${ids}`);
+  }
+});
+
 test('sandbox has labelled native controls, error slots, reset and static worked examples', () => {
   const c = read('src/components/RfSandbox.astro');
   for (const f of ['sf', 'bandwidthKHz', 'codingRate', 'payloadBytes', 'packetCount', 'preambleSymbols', 'crc', 'lowDataRateOptimize', 'obstruction']) {

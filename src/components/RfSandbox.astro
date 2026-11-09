@@ -21,6 +21,7 @@ const crLabel = (cr: number) => `4/${cr + 4}`;
   </p>
 
   <h3>Worked examples</h3>
+  <div class="rf-scroll" role="region" tabindex="0" aria-label="Airtime fixtures table, scrolls sideways on narrow screens">
   <table class="rf-table">
     <caption>Airtime fixtures (20 physical-layer bytes, explicit header, CRC on, 8-symbol preamble, CR 4/5)</caption>
     <thead>
@@ -40,6 +41,8 @@ const crLabel = (cr: number) => `4/${cr + 4}`;
       ))}
     </tbody>
   </table>
+  </div>
+  <div class="rf-scroll" role="region" tabindex="0" aria-label="Link-budget fixtures table, scrolls sideways on narrow screens">
   <table class="rf-table">
     <caption>Link-budget fixtures (synthetic; sensitivity assumed)</caption>
     <thead><tr><th scope="col">Fixture</th><th scope="col">Terms (dB)</th><th scope="col">Received</th><th scope="col">Margin vs assumed sensitivity</th></tr></thead>
@@ -54,6 +57,7 @@ const crLabel = (cr: number) => `4/${cr + 4}`;
       ))}
     </tbody>
   </table>
+  </div>
 
   <noscript><p class="rf-note">The interactive calculator needs JavaScript. The worked examples above use the same formulas.</p></noscript>
 
@@ -355,13 +359,20 @@ const crLabel = (cr: number) => `4/${cr + 4}`;
   .rf-ui[hidden] {
     display: none;
   }
+  /* The table keeps its natural width; only this region scrolls, never the page. */
+  .rf-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    margin-block: 1rem;
+  }
+  .rf-scroll:focus-visible {
+    outline: 3px solid var(--mra-focus);
+    outline-offset: 2px;
+  }
   .rf-table {
     width: 100%;
     border-collapse: collapse;
     font-size: var(--sl-text-sm);
-    margin-block: 1rem;
-    display: block;
-    overflow-x: auto;
   }
   .rf-table caption {
     text-align: start;
