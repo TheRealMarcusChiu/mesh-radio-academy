@@ -18,7 +18,15 @@ export const lessonSchema = z.object({
   baseline: z.string().min(1),
   reviewed: z.union([
     z.date(),
-    z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'reviewed must be YYYY-MM-DD').transform((s) => new Date(s)),
+    z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/, 'reviewed must be YYYY-MM-DD')
+      // Round-trip rejects Invalid Date and rollovers such as 2026-02-30 → March 2.
+      .refine((s) => {
+        const d = new Date(`${s}T00:00:00Z`);
+        return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === s;
+      }, 'reviewed must be a real calendar date')
+      .transform((s) => new Date(`${s}T00:00:00Z`)),
   ]),
 });
 

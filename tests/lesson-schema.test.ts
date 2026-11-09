@@ -41,3 +41,20 @@ test('rejects bad module numbers, difficulty, time and source id shapes', () => 
   assert.equal(lessonSchema.safeParse({ ...valid, sourceIds: ['see docs'] }).success, false);
   assert.equal(lessonSchema.safeParse({ ...valid, reviewed: 'yesterday' }).success, false);
 });
+
+test('rejects impossible calendar dates instead of rolling them over', () => {
+  for (const reviewed of ['2026-99-99', '2026-13-01', '2026-00-10', '2026-04-31', '2026-01-00', '2026-02-29', '2026-02-30']) {
+    assert.equal(lessonSchema.safeParse({ ...valid, reviewed }).success, false, reviewed);
+  }
+});
+
+test('accepts a real leap day exactly as written', () => {
+  const r = lessonSchema.parse({ ...valid, reviewed: '2028-02-29' });
+  assert.equal(r.reviewed.toISOString().slice(0, 10), '2028-02-29');
+});
+
+test('accepts a Date object, as YAML frontmatter dates arrive', () => {
+  const d = new Date(Date.UTC(2026, 10, 8));
+  assert.equal(lessonSchema.parse({ ...valid, reviewed: d }).reviewed.getTime(), d.getTime());
+  assert.equal(lessonSchema.safeParse({ ...valid, reviewed: new Date('nope') }).success, false);
+});
