@@ -1,0 +1,288 @@
+---
+title: 'Module 09: Troubleshooting and field tests'
+description: Diagnose a failed link in a fixed order from power to app delivery, use a symptom-to-test decision tree, recover a board with its documented steps, and keep a test log that separates measurement from inference.
+lesson:
+  module: '09'
+  outcomes:
+    - Work through power, USB or BLE, firmware and role, region, RF parameters, channel or contact, routing and application delivery in that order.
+    - Pick the right first test for four symptoms - local works but multi-hop fails, an asymmetric link, a known node without delivery, and delivery that only works through an IP bridge.
+    - Follow a recovery decision tree with board-specific steps, and spot each step that erases data before running it.
+    - Keep a structured test log, repeat runs while changing one variable, and write measurements separately from inferences.
+  estimatedMinutes: 45
+  prerequisites: ['modules/03-first-meshtastic-link', 'modules/05-first-meshcore-link', 'modules/07-reliability-capacity']
+  difficulty: intermediate
+  sourceIds: [CUR-C01, CUR-C03, CUR-C04, CUR-C11, CUR-C22, CUR-C23, MT-C08, MT-C11, MT-C13, MT-C15, MT-C19, MT-C22, MC-004, MC-005, MC-007, MC-011, MC-012, MC-030, HW-C04, HW-C06, HW-C11, HW-C12, LW-C02, RF-C12]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; manufacturer recovery docs checked 2026-11-09, not run'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+When a message doesn't arrive, the temptation is to change five things at once. This module gives you a fixed
+order, a decision tree for the common symptoms, and a log format that lets you prove what changed. The examples are
+synthetic; the recovery steps come from manufacturer documents and were not run for this course.
+
+## Goals and prerequisites
+
+You need the first-link checkpoints from [Module 03](../03-first-meshtastic-link/) and
+[Module 05](../05-first-meshcore-link/), and the PDR method from [Module 07](../07-reliability-capacity/). Without
+hardware, use the synthetic logs in this lesson and the mismatch bench in the
+[packet inspector](../../labs/packet-inspector/).
+
+## The order: bottom layer first
+
+<FlowDiagram
+  title="Troubleshooting order from power to application"
+  desc="Eight steps in order: power, USB or BLE link, firmware and role, region, RF parameters, channel or contact, routing, application delivery. Each step is checked only after the one before it passes."
+  width={440}
+  height={250}
+  nodes={[
+    { id: 'p', x: 70, y: 30, label: '1 Power' },
+    { id: 'u', x: 70, y: 90, label: '2 USB / BLE' },
+    { id: 'f', x: 70, y: 150, label: '3 Firmware', sub: 'version, role' },
+    { id: 'r', x: 70, y: 210, label: '4 Region' },
+    { id: 'rf', x: 290, y: 210, label: '5 RF params' },
+    { id: 'c', x: 290, y: 150, label: '6 Channel', sub: 'key or contact' },
+    { id: 'ro', x: 290, y: 90, label: '7 Routing' },
+    { id: 'a', x: 290, y: 30, label: '8 App delivery' },
+  ]}
+  edges={[
+    { from: 'p', to: 'u', kind: 'wire' },
+    { from: 'u', to: 'f', kind: 'wire' },
+    { from: 'f', to: 'r', kind: 'wire' },
+    { from: 'r', to: 'rf', kind: 'wire' },
+    { from: 'rf', to: 'c', kind: 'wire' },
+    { from: 'c', to: 'ro', kind: 'wire' },
+    { from: 'ro', to: 'a', kind: 'wire' },
+  ]}
+  caption="Down the left, then up the right. Don't touch a higher step until the lower one is confirmed, or you won't know which change mattered."
+>
+
+1. **Power:** supply, cable, battery, charge temperature.
+2. **USB or BLE:** does the computer see the device, does the phone pair?
+3. **Firmware and role:** installed version and build target, role or image.
+4. **Region:** set, and right for your hardware's band.
+5. **RF parameters:** preset or frequency, bandwidth, spreading factor, coding rate, slot.
+6. **Channel or contact:** same channel and key; for DMs, each side knows the other.
+7. **Routing:** relays eligible, hop budget or path valid.
+8. **Application delivery:** the recipient's app displays it; the ACK comes back.
+
+</FlowDiagram>
+
+| Step | Check | Typical evidence |
+|---|---|---|
+| 1 Power | Supply and cable; battery polarity; charge temperature range | Screen or LED on; stable voltage |
+| 2 USB / BLE | Data cable, other port, no other app holding the port; forget and re-pair BLE | Serial port or drive appears; app connects |
+| 3 Firmware, role | Version and target read **from the device**; Meshtastic role setting; MeshCore image type <Cite ids="HW-C11 HW-C04" /> | Version string, board name |
+| 4 Region | Region is set; a Meshtastic node with region unset doesn't transmit <Cite ids="CUR-C01" /> | Region field |
+| 5 RF | Same preset or frequency, bandwidth, SF, CR and slot on both <Cite ids="MT-C15 CUR-C03" /> | Settings side by side |
+| 6 Channel / contact | Same channel key; DM recipient's key known (Meshtastic) or mutual contacts (MeshCore) <Cite ids="MT-C19 MC-007" /> | Contact list, key fingerprint compared in person |
+| 7 Routing | Relays eligible; hop budget; MeshCore stored path still valid <Cite ids="MT-C08 MC-005" /> | Hop fields; stored path |
+| 8 App | Recipient displays it; ACK state on sender <Cite ids="MT-C13 MC-030" /> | Recipient screen; sender status |
+
+Same protocol on both is a step-0 check: Meshtastic and MeshCore never exchange native messages. <Cite ids="LW-C02" />
+
+## Symptom-to-test decision tree
+
+Start at the symptom that matches. Each answer names the first test and why.
+
+<details>
+<summary>Local sends work, but multi-hop fails</summary>
+
+Steps 1–6 are proven by the local success, so start at **routing**.
+
+- **Meshtastic:** is the hop limit big enough for the number of relays? Is the middle node `CLIENT_MUTE` or in
+  rebroadcast mode `NONE`? <Cite ids="MT-C08" />
+- **MeshCore:** is the middle node a repeater, or a companion with repeating off? <Cite ids="MC-004" /> Is a stored
+  path pointing at a relay that's gone? <Cite ids="MC-011" />
+- **Test:** change one of these, send 10 numbered messages, count deliveries at the far end.
+</details>
+
+<details>
+<summary>The link works one way only (asymmetric)</summary>
+
+Measure both directions with the same count and spacing. Then check, one at a time:
+
+- Transmit power or antenna differs between the two ends.
+- One end is noisier (near electronics or another transmitter); compare SNR, not just RSSI. <Cite ids="RF-C12" />
+- **MeshCore:** routes are learned per direction; D's path to A can be stale while A's to D is fine. Reset the stale
+  one and re-test. <Cite ids="MC-012" />
+- **Meshtastic:** an ACK may be lost on the way back while the message arrived. Check the recipient's screen. <Cite ids="MT-C13" />
+</details>
+
+<details>
+<summary>A known node or contact never gets messages</summary>
+
+"Known" proves you heard *something* once, not that a route works now.
+
+- **Meshtastic:** the node appears in your list, but DMs fail: is its public key known (otherwise the DM refuses to
+  send)? Is the saved next hop stale? The last retry floods; did that help? <Cite ids="MT-C19 MT-C11" />
+- **MeshCore:** you heard an advert, but the contact has no path or a stale path. Reset the path and send again;
+  a reset transmits nothing by itself. <Cite ids="MC-007 MC-012" />
+</details>
+
+<details>
+<summary>Delivery works only when an IP bridge is on</summary>
+
+That's not an RF link. The packet went over MQTT between two gateways. <Cite ids="MT-C22" />
+
+- Check the via-MQTT flag on received packets (Meshtastic header). <Cite ids="CUR-C04" />
+- Check which channels have uplink and downlink enabled. <Cite ids="CUR-C11" />
+- **Test:** disable downlink (or the gateway) and repeat. If delivery drops to zero, the RF path doesn't exist yet.
+  The [local MQTT appendix](../../appendix/local-mqtt/) walks through this diagnosis on synthetic data.
+</details>
+
+## Recovery decision tree
+
+Recovery is for the device itself. **Every step marked ⚠ erases settings and identity keys.** Back up first, and
+never use erase as a first diagnostic. <Cite ids="HW-C12" />
+
+<details>
+<summary>Powers on, but no serial port or drive appears</summary>
+
+1. Known **data** cable, different port, no other app holding the port.
+2. Enter the board's bootloader with its documented procedure (table below).
+3. On RAK and T1000-E, a USB drive should appear; read its info file before doing anything else.
+4. Reflash the exact image for your board. ⚠ Choosing "full erase" or "factory reset" erases.
+</details>
+
+<details>
+<summary>Boots, but not in the role you expected</summary>
+
+1. Read version and build target from the device.
+2. Meshtastic: roles are a setting on one image; change the setting.
+3. MeshCore: companion, repeater and room server are separate images; reflash the right one. ⚠ May erase depending
+   on the procedure. <Cite ids="HW-C04" />
+</details>
+
+<details>
+<summary>The phone won't pair after flashing</summary>
+
+1. Forget the device in the phone's Bluetooth settings and pair again. <Cite ids="HW-S08" />
+2. Check the app version against the baseline.
+3. Try USB to separate a BLE problem from a firmware problem.
+</details>
+
+<details>
+<summary>Two nodes still can't exchange anything</summary>
+
+Go back to the eight-step order above, starting at step 3 on **both** nodes, and change one thing per test.
+</details>
+
+| Board | Bootloader entry | Erase warnings | Source |
+|---|---|---|---|
+| Heltec WiFi LoRa 32 V3 | Hold PRG, tap RST, release PRG | Full-erase flashing options destroy settings and keys | <Cite ids="HW-S02 HW-C12" /> |
+| RAK4631 | Double-tap reset for the UF2 drive; RAK4631-R needs its documented bootloader conversion first | A conversion or erase image wipes settings | <Cite ids="HW-S05 HW-C12" /> |
+| Seeed T1000-E | Hold the button, connect the magnetic cable twice quickly | Use only the exact T1000-E image; **do not use NRF-OTA**; the erase image wipes everything | <Cite ids="HW-S07 HW-S08 HW-C06" /> |
+
+## A test log that you can compare later
+
+Use the same columns every time. The [field planner](../../labs/field-planner/) offers a blank CSV with these
+columns and a synthetic example.
+
+| Column | Kind | Example (synthetic) |
+|---|---|---|
+| Test ID, date and time | Record | T09-03, 2026-11-14 10:20 |
+| Firmware, board, role | Record | 2.7.26 / RAK4631 / CLIENT |
+| Modem settings | Record | Preset name, slot |
+| Antenna and placement | Record | Stock antenna, vertical, window sill |
+| Location label | Record | "Back porch" (never coordinates) |
+| Obstruction | Record | One brick wall |
+| Sent, received | **Measurement** | 20 scheduled, 17 displayed at D |
+| RSSI, SNR | **Measurement** | As reported by the receiver |
+| Latency | **Measurement** | Seconds from send to display |
+| Route observation | **Inference** unless read from a packet | "Probably via B" |
+| Notes | Either; label which | "Wall may matter (inference)" |
+
+Rules for comparing runs: <Cite ids="CUR-C23" />
+
+1. Keep RF settings, endpoints and firmware fixed.
+2. Change **one** variable per repeat, and write which one.
+3. Report PDR with its sample size. <Cite ids="CUR-C22" />
+4. Mark each note as measurement or inference.
+5. Keep the cadence gentle: a few messages a minute at most on a shared channel.
+
+## Worked example: three runs, one conclusion
+
+A synthetic log for a two-node Meshtastic link that "sometimes fails":
+
+```text
+SYNTHETIC LOG - not a measurement
+T09-01  A→D  20 sched  12 shown  ACKs 11  RSSI −112..−118  SNR −9..−14  antennas vertical, D behind wall
+T09-02  A→D  20 sched  12 shown  ACKs 12  same conditions, repeated next morning
+T09-03  A→D  20 sched  19 shown  ACKs 18  ONE CHANGE: D's node moved 1 m to the window, same room
+```
+
+- Measurement: PDR 60 % (12/20), 60 % (12/20), 95 % (19/20).
+- Inference: the wall or the position inside the room matters at this distance. Supported by one controlled change
+  after two matching baselines. Not supported: "windows add 35 %", which would need many runs and other days.
+- What the ACK column adds: ACKs track displays closely here, but in T09-03 one message was shown without an ACK,
+  so ACKs undercount delivery by 1.
+
+## Your turn: diagnose from evidence
+
+A MeshCore group reports: "Alex can message Robin, but Robin's replies never reach Alex. Both see each other in
+contacts. It started after the hilltop repeater was replaced last week." Which step of the order do you start
+at, what's your first test, and what would confirm it?
+
+<details>
+<summary>Suggested answer</summary>
+
+Start at **routing** (step 7): steps 1–6 are shown to work by Alex→Robin succeeding. The replaced repeater has a new
+identity and prefix, so Robin's stored path back to Alex likely still names the old repeater. <Cite ids="MC-011" />
+First test: reset Robin's path to Alex, then Robin sends one message. <Cite ids="MC-012" /> Confirmation: it floods,
+arrives, and later replies go direct on the new path. If it still fails, check the new repeater's radio settings
+and forwarding flag (step 5 and eligibility). <Cite ids="MC-005" />
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. A friend's first move with any problem is "factory reset". Why is that a poor first diagnostic?</summary>
+
+It erases settings and identity keys, so contacts see a new node, and it destroys the evidence of what was wrong.
+It belongs at the end of the recovery tree, after a backup. <Cite ids="HW-C12" />
+</details>
+
+<details>
+<summary>2. Your node hears a neighbor with RSSI −60 dBm, but DMs fail. Which steps can you skip?</summary>
+
+Probably power and the RF link for that direction. Still check channel or contact, routing and the return path:
+strong RSSI doesn't prove decoding, keys or routing. <Cite ids="RF-C12" />
+</details>
+
+<details>
+<summary>3. Is "probably went via B" a measurement?</summary>
+
+No, unless you read it from packet fields (relay byte, path). Label it an inference. <Cite ids="CUR-C23" />
+</details>
+
+<details>
+<summary>4. Delivery works across town only when the gateway is on. What have you shown?</summary>
+
+That the IP path works, not the RF path. Turn downlink off and repeat to test RF alone. <Cite ids="CUR-C11" />
+</details>
+
+<details>
+<summary>Deeper dive: when "one variable" isn't possible</summary>
+
+Some changes drag others along: moving a node changes distance, obstruction and noise at once; reflashing changes
+firmware and erases keys. Then write down everything that changed, run more repeats, and narrow the conclusion to
+the combination you actually tested.
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="CUR-C01 CUR-C03 CUR-C04 CUR-C11 CUR-C22 CUR-C23 MT-C08 MT-C11 MT-C13 MT-C15 MT-C19 MT-C22 MC-004 MC-005 MC-007 MC-011 MC-012 MC-030 HW-C04 HW-C06 HW-C11 HW-C12 LW-C02 RF-C12" />
+- Sources: <Cite ids="HW-S02 HW-S05 HW-S07 HW-S08 MC-S04 MC-S11 MT-S13 MT-S30" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 08: Privacy, security and rules](../08-privacy-security-rules/).
+Next: [Module 10: Build a neighborhood mesh](../10-neighborhood-mesh/). Plan topology, roles, antennas, power and
+maintenance with your community.
+
+<ProgressToggle page="modules/09-troubleshooting-field-tests" />

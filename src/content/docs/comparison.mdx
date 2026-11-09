@@ -1,0 +1,71 @@
+---
+title: Comparing Meshtastic and MeshCore
+description: Neutral, evidence-linked comparison tables for Meshtastic 2.7.26 and MeshCore 1.18.0 - layers, roles, routing, security, operations and ecosystem - with conditional recommendations instead of a winner.
+---
+
+import Cite from '../../components/Cite.astro';
+
+These tables compare the course baselines only: Meshtastic `2.7.26.54e0d8d` and MeshCore `1.18.0`. Newer releases
+can differ. Each row links to its evidence; rows marked *documented* were read in source or docs and **not tested on
+hardware**. For how to turn the tables into a decision, see [Module 11](../modules/11-compare-choose/).
+
+## Layers
+
+| Layer | Meshtastic | MeshCore |
+|---|---|---|
+| Radio | LoRa | LoRa |
+| Framing | Sync word `0x2b` | RadioLib "private" sync-word constant; stock cross-reception not established <Cite ids="LW-C04" /> |
+| Packet format | 16-byte clear header + Protobuf payload <Cite ids="CUR-C04 CUR-C06" /> | Header byte, path, typed payload <Cite ids="MC-017 CUR-C15" /> |
+| Native interoperability | None with MeshCore <Cite ids="LW-C02" /> | None with Meshtastic <Cite ids="LW-C02" /> |
+| App link | Phone app or Python CLI over BLE, USB or network | Companion protocol over BLE or USB <Cite ids="MC-018" /> |
+
+## Roles and forwarding
+
+| | Meshtastic | MeshCore |
+|---|---|---|
+| Personal node | `CLIENT` (may relay) or `CLIENT_MUTE` <Cite ids="MT-C07" /> | Companion, repeating off by default <Cite ids="MC-004" /> |
+| Infrastructure | `ROUTER`, `ROUTER_LATE` (coordinated); `REPEATER` deprecated <Cite ids="MT-C05 HW-C08" /> | Repeater and room-server images <Cite ids="HW-C04" /> |
+| Broadcast | Managed flood; clients cancel on hearing a duplicate <Cite ids="MT-C03" /> | Flood; each repeater forwards its first copy <Cite ids="MC-010" /> |
+| Hop accounting | Hop limit in header, default 3, max 7 <Cite ids="CUR-C02 MT-C08" /> | Path count in path byte; up to 63/32/21 hops by width <Cite ids="MC-016" /> |
+| DM routing | Flood, then per-hop next-node preference <Cite ids="MT-C10" /> | Flood, then stored full path <Cite ids="MC-008 MC-009" /> |
+| Broken relay | Last retry drops preference and floods <Cite ids="MT-C11" /> | Needs explicit path reset and new send <Cite ids="MC-011 MC-012" /> |
+| Shared history | — | Room server, 32 posts by default <Cite ids="MC-027" /> |
+
+## Security
+
+| | Meshtastic 2.7.26 | MeshCore 1.18.0 |
+|---|---|---|
+| Public channel | Published default key: public <Cite ids="MT-C17" /> | Published key: public <Cite ids="MC-020" /> |
+| Private channel integrity | None (AES-CTR) <Cite ids="MT-C17" /> | 2-byte truncated HMAC <Cite ids="MC-022" /> |
+| Group sender authenticity | Not authenticated | Not authenticated <Cite ids="MC-021" /> |
+| DM encryption | X25519 → AES-256-CCM, 8-byte tag <Cite ids="MT-C18" /> | Identity-derived secret, AES-128, 2-byte MAC <Cite ids="MC-019 MC-022" /> |
+| Replay protection | Not established <Cite ids="MT-C26" /> | No blanket protection <Cite ids="MC-023" /> |
+| Remote admin | Admin keys + session passkey <Cite ids="MT-C20" /> | Password + ACL; change default <Cite ids="MC-024" /> |
+| Clear metadata | Sender, destination, IDs, hops, channel hash <Cite ids="CUR-C04" /> | Route, type, relay prefixes, short hashes <Cite ids="MC-028" /> |
+| Advisory practice | First-party advisories with versions <Cite ids="MT-S29" /> | Fixes in latest release only <Cite ids="MC-032" /> |
+
+## Operations and ecosystem
+
+| | Meshtastic | MeshCore |
+|---|---|---|
+| Course client | Python CLI 2.7.11 (documented); Android 2.8.3 / Apple 2.7.27 identified, not tested <Cite ids="MT-C24 MT-C25" /> | App 1.50.0, documented with firmware 1.18.0, not tested <Cite ids="MC-003" /> |
+| Read-only console exercise | `--get lora.hop_limit` <Cite ids="MT-C24" /> | `ver`, `board`, `stats-*` <Cite ids="MC-031" /> |
+| IP bridging | MQTT module, per-channel uplink/downlink <Cite ids="CUR-C11" /> | Bridges exist per build; document each separately <Cite ids="MC-029" /> |
+| Background traffic | Node info (900 s), position (15 min when changed) <Cite ids="CUR-C09" /> | Repeater flood adverts (47 h default) <Cite ids="CUR-C17" /> |
+| Ecosystem note | Unversioned docs now describe 2.8 <Cite ids="MT-C02" /> | Firmware lineage and app distribution are separate after the 2026 split <Cite ids="MC-001" /> |
+
+## Conditional recommendations
+
+| If… | Then lean toward… | Because |
+|---|---|---|
+| Your area's community already runs one protocol | **That one** | Nodes only help nodes on the same protocol and settings <Cite ids="LW-C02" /> |
+| Nodes move and nobody will maintain fixed sites | Meshtastic | Ordinary clients relay without planning <Cite ids="MT-C07" /> |
+| You can host and maintain fixed relays | MeshCore (or Meshtastic with coordinated roles) | Dedicated repeaters and stored paths suit planned links <Cite ids="MC-009" /> |
+| Members join at different times and need history | MeshCore room server | Stores recent posts, but its operator can read them <Cite ids="MC-026" /> |
+| You need scripting and data logging | Meshtastic | Python CLI and telemetry ports <Cite ids="MT-C24 CUR-C06" /> |
+| Content or identity must stay private | Neither is a secure messenger | Metadata stays visible on both <Cite ids="CUR-C04 MC-028" /> |
+
+## Hardware
+
+Both protocols have build targets for the same three candidate boards at these baselines; none was tested by this
+course. See [Module 02](../modules/02-hardware-first-boot/) and the [baselines](../reference/baselines/). <Cite ids="HW-C04 HW-C11" />

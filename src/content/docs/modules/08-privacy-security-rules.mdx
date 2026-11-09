@@ -1,0 +1,309 @@
+---
+title: 'Module 08: Privacy, security and rules'
+description: Build a threat model for listeners, shared-key holders, relays and bridge operators; check confidentiality, integrity, replay and key identity separately for each message type on both protocols; keep metadata and keys under control; and look up the rules that apply to your actual device.
+lesson:
+  module: '08'
+  outcomes:
+    - Fill in a threat matrix for casual listeners, shared-key holders, relays, bridge or map operators and room-server operators.
+    - Compare public or default-key channels, private channels, direct messages and administration on both protocols, judging confidentiality, integrity, replay protection and key identity separately.
+    - List the metadata that stays observable, and what a bridge, map or cloud service adds.
+    - Plan key sharing, rotation, loss and revocation realistically, and check first-party advisories with affected and fixed versions.
+    - Start a rules check at your own regulator, and for the dated US example separate Part 15 from Part 97, look up a grant, and tell conducted power, EIRP and field strength apart.
+  estimatedMinutes: 60
+  prerequisites: ['modules/04-meshtastic-under-the-hood', 'modules/06-meshcore-under-the-hood']
+  difficulty: intermediate
+  sourceIds: [MT-C13, MT-C14, MT-C17, MT-C18, MT-C19, MT-C20, MT-C21, MT-C22, MT-C25, MT-C26, MC-019, MC-020, MC-021, MC-022, MC-023, MC-024, MC-025, MC-026, MC-028, MC-029, MC-032, REG-C01, REG-C02, REG-C03, REG-C04, REG-C05, REG-C06, HW-C09, CUR-C04, CUR-C10, CUR-C12, CUR-C13, CUR-C14, CUR-C24, CUR-C25]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; US eCFR Title 47 issue 2026-11-05; advisories listed 2026-11-09'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+"It's encrypted" is the start of a question, not the answer. Encrypted from whom? Does it stop someone changing a
+message, or replaying an old one? Who holds the key, and what can everyone else still see? This module answers those
+questions separately for each kind of message on both protocols, then turns to the rules for putting a radio on the
+air. All keys, names and positions here are synthetic. The rules section is **educational, dated and scoped to the
+United States**; it is not legal advice.
+
+## Goals and prerequisites
+
+You need the packet structure from [Module 04](../04-meshtastic-under-the-hood/) and
+[Module 06](../06-meshcore-under-the-hood/). No hardware is needed. Keep a notebook for the threat matrix.
+
+## Who might be watching
+
+<FlowDiagram
+  title="Threat boundaries around a mesh message"
+  desc="A sender's message passes a casual listener who hears the radio, relays that forward it, and other key holders who can read it. A bridge or map service copies it to the internet where its operator and other users may see it."
+  width={460}
+  height={220}
+  nodes={[
+    { id: 's', x: 60, y: 110, label: 'Sender' },
+    { id: 'l', x: 190, y: 30, label: 'Listener', sub: 'no key', kind: 'note' },
+    { id: 'r', x: 190, y: 110, label: 'Relay', sub: 'may lack key' },
+    { id: 'k', x: 190, y: 190, label: 'Key holder', sub: 'shared channel' },
+    { id: 'br', x: 330, y: 110, label: 'Bridge / map', sub: 'operator', kind: 'bridge' },
+    { id: 'net', x: 410, y: 30, label: 'Internet users', kind: 'note' },
+  ]}
+  edges={[
+    { from: 's', to: 'l', label: 'hears RF', kind: 'rf' },
+    { from: 's', to: 'r', kind: 'rf' },
+    { from: 's', to: 'k', kind: 'rf' },
+    { from: 'r', to: 'br', label: 'uplink', kind: 'ip' },
+    { from: 'br', to: 'net', kind: 'ip' },
+  ]}
+  caption="Every arrow is a party who may see something. What each one sees depends on the message type and settings, which the tables below spell out."
+>
+
+- A **casual listener** with a LoRa receiver hears every transmission in range, keys or not.
+- A **relay** forwards packets and may or may not hold the key.
+- A **shared-key holder** is anyone with a channel key: they can read and write that channel.
+- A **bridge or map operator** receives whatever the gateway uploads and keeps it on internet servers, where other
+  users may also see it.
+
+</FlowDiagram>
+
+## Four message types, both protocols
+
+Read each row on its own. One protocol's channel and its DMs have very different properties.
+
+### Public or default-key channels
+
+| | Meshtastic | MeshCore |
+|---|---|---|
+| Who can read and send | Anyone: the default key is printed in the source and the schema calls one-byte shorthand keys "only minimally secure" <Cite ids="CUR-C13 MT-C17" /> | Anyone with the published public-channel key <Cite ids="MC-020" /> |
+| Integrity | No authentication tag on AES-CTR channel traffic <Cite ids="MT-C17" /> | A 2-byte truncated HMAC; any key holder can produce it <Cite ids="MC-022" /> |
+| Sender identity | Names are not proof | Sender name is unverified text <Cite ids="MC-021" /> |
+| Treat it as | **Public.** Write nothing you wouldn't post on a notice board | **Public** |
+
+### Private shared channels
+
+| | Meshtastic | MeshCore |
+|---|---|---|
+| Confidentiality | AES-128 or AES-256 from a 16- or 32-byte key, against anyone without it <Cite ids="CUR-C13" /> | Readers limited to key holders <Cite ids="MC-020" /> |
+| Integrity | Not authenticated: AES-CTR alone <Cite ids="MT-C17" /> | Truncated 2-byte HMAC under the shared key <Cite ids="MC-022" /> |
+| Sender identity | Any key holder can pose as any member | Any key holder can type any name <Cite ids="MC-021" /> |
+| Replay | Not established <Cite ids="MT-C26" /> | Duplicate caches and timestamps have narrow scopes; no blanket protection <Cite ids="MC-023" /> |
+
+### Direct messages
+
+| | Meshtastic 2.7 | MeshCore 1.18 |
+|---|---|---|
+| Confidentiality | X25519 key agreement → SHA-256 → AES-256-CCM; relays can't read it <Cite ids="MT-C18" /> | Secret derived from the two identities; relays route without it <Cite ids="MC-019" /> |
+| Integrity | CCM's 8-byte tag. No separate signature <Cite ids="MT-C18" /> | 2-byte truncated HMAC <Cite ids="MC-022" /> |
+| Key identity | A public key learned over the mesh isn't a verified person; unknown key → send fails <Cite ids="MT-C19" /> | A signed advert proves key possession, not a name; compare full keys out of band <Cite ids="MC-019" /> |
+| Delivery proof | ACK is not a signed receipt in 2.7; documented for 2.8.1+ only <Cite ids="MT-C14" /> | ACK value is a truncated hash, not a receipt from a person |
+| Replay | Not established <Cite ids="MT-C26" /> | No blanket protection <Cite ids="MC-023" /> |
+
+### Administration
+
+| | Meshtastic | MeshCore |
+|---|---|---|
+| Remote admin | Authorized admin public keys **and** a current session passkey: two independent checks <Cite ids="MT-C20" /> | Repeater and room-server admin by password and ACL, separate from chat <Cite ids="MC-024" /> |
+| Defaults to fix | Keep the legacy admin channel off | Change the shipped `password` before deployment <Cite ids="MC-024" /> |
+| Extra sensitive features | | Remote companion CLI is a separately granted permission; leave it off unless needed <Cite ids="MC-025" /> |
+| Room server | | The server decrypts and stores posts; its operator is inside the trust boundary <Cite ids="MC-026" /> |
+
+## Worked example: one message, five observers
+
+A synthetic Meshtastic message: node "Kestrel" sends "Meet at 6" on a private channel with a 32-byte key. Relay
+"Heron" doesn't have the key and forwards it. Gateway "Osprey" has the key, uplink on, encryption enabled, map
+reporting on. Here's what each party gets.
+
+| Observer | What they get | Why |
+|---|---|---|
+| Listener with a receiver, no key | Kestrel's node number, the destination (broadcast), packet ID, hop fields, channel hash, time and approximate signal; no text | The 16-byte header is clear <Cite ids="CUR-C04" /> |
+| Heron (relay, no key) | The same, and it forwards the packet | Rebroadcast mode `ALL` relays without decrypting <Cite ids="MT-C07" /> |
+| Another channel member | The text, and the ability to send a message that looks like Kestrel's | AES-CTR without an authentication tag <Cite ids="MT-C17" /> |
+| Broker (via Osprey) | The encrypted packet and its header, plus Osprey's map report with its position | Encryption-enabled upload; unencrypted map report <Cite ids="CUR-C10" /> |
+| Osprey's operator | The text, since Osprey holds the key | Key holder |
+
+Change one setting, Osprey's "encryption enabled" to off, and the broker receives the decoded text as well. Every
+row is a separate question; "encrypted" alone answered none of them.
+
+## The threat matrix
+
+Fill one cell per actor and message type: **R** can read content, **W** can write content that looks valid, **M**
+sees metadata only.
+
+| Actor | Public channel | Private channel | DM | Admin |
+|---|---|---|---|---|
+| Casual listener | R, W | M | M | M |
+| Shared-key holder | R, W | **R, W** (and can impersonate members) | M | M |
+| Relay without the key | R, W (public key is public) | M | M | M |
+| Bridge or map operator | Whatever the gateway uploads: possibly decoded content plus metadata <Cite ids="MT-C22 MC-029" /> | Same; depends on gateway settings | M, plus what the gateway decrypted (normally nothing for a DM it can't read) | M |
+| Room-server operator (MeshCore) | — | R for rooms it hosts | — | Its own admin |
+
+The bold cell is the one people forget: **everyone with a private channel's key is inside its trust boundary.**
+
+## What stays visible anyway
+
+Encryption hides the body, not the envelope.
+
+- **Meshtastic:** the 16-byte header is in the clear: sender, destination, packet ID, hop fields, a via-MQTT flag,
+  channel hash, next-hop and relay bytes. <Cite ids="CUR-C04" />
+- **MeshCore:** timing, length, route and payload type, relay prefixes and short source and destination hashes;
+  adverts carry a public key, name and optional location. <Cite ids="MC-028" />
+- **Both:** when you transmit and roughly where from, to anyone with a receiver in range.
+- **Bridges and maps** add retention and new observers. A Meshtastic map report is unencrypted and includes names,
+  node ID, position at your configured precision, hardware, firmware, preset and primary channel name. <Cite ids="CUR-C10 MC-029" />
+  Lowering a channel's position precision limits what positions reveal. <Cite ids="CUR-C14" />
+- A map shows what reached a map. It's not a census, and being absent from one is not privacy. <Cite ids="CUR-C25" />
+
+## Keys over time: sharing, rotation, loss, revocation
+
+1. **Share keys out of band** and never as a screenshot. A Meshtastic channel URL contains the key. <Cite ids="CUR-C12" />
+2. **Rotation** means giving remaining members a new key by a private route. Old recordings stay readable to whoever
+   kept the old key; there's no retroactive protection. <Cite ids="MT-C21" />
+3. **Removing someone** is the same as rotation. Deleting their contact or chat on your phone revokes nothing.
+4. **Lost device:** assume its keys are exposed. Rotate shared channels, remove it from Meshtastic admin key lists
+   and MeshCore ACLs, and tell DM partners to expect a new key from your replacement.
+5. **Identity changes:** a reflashed or replaced node has a new key pair. Partners should re-verify it.
+
+## Firmware updates and advisories
+
+Check first-party advisories before you update and after. Selected Meshtastic advisories, as listed on 2026-11-09:
+
+| Advisory | Issue | Affected / fixed | Source |
+|---|---|---|---|
+| GHSA-377p-prwp-4hwf | Forged legacy DMs could look secure | Fixed in 2.7.15 | <Cite ids="MT-S25" /> |
+| GHSA-95pq-gj5v-4fg2 | Crafted node info could overwrite stored public keys | Fixed in 2.6.3 | <Cite ids="MT-S26" /> |
+| GHSA-gq7v-jr8c-mfr7 | Repeated or weak key pairs from cloned devices | 2.6.11 patches and warnings; check key provenance, upgrading alone doesn't fix old keys | <Cite ids="MT-S27" /> |
+| GHSA-7ph5-2mjv-69h8 | Malformed long name breaks clients | Affected ≤ 2.7.22.96dd647; patched version listed as N/A | <Cite ids="MT-S28" /> |
+
+The listing changes; it isn't a full audit. <Cite ids="MT-S29" /> For MeshCore, the project says security fixes land
+in the latest release only, and an empty advisory list is not evidence of safety. <Cite ids="MC-032" /> Matching
+version numbers between app and firmware prove neither compatibility nor safety. <Cite ids="MT-C25" />
+
+## Privacy checklist
+
+- [ ] No channel URL, QR code, key or config export in any photo, chat, issue or repository.
+- [ ] Position sharing off, or precision reduced, on every channel that doesn't need it.
+- [ ] MQTT, JSON and map reporting off unless you chose them and know where the data goes.
+- [ ] Node names don't contain your real name, call sign (unless operating as an amateur) or address.
+- [ ] Shared keys are fresh 16- or 32-byte keys, not shorthand defaults, for anything private.
+- [ ] Peer keys verified in person for DMs that matter.
+- [ ] Admin defaults changed; remote admin features off unless needed.
+- [ ] Firmware checked against current advisories; update plan written.
+- [ ] Test logs sanitized: approximate location labels only.
+
+## Rules: start with your own regulator
+
+Owning a radio doesn't settle whether a given firmware, power setting and antenna are allowed where you are. The
+course's international workflow: <Cite ids="CUR-C24" />
+
+1. Find your **national regulator** and its rules for the band your hardware uses.
+2. Find the **device's authorization** under that regulator: its certification, the conditions on it, and whether
+   your firmware, power and antenna stay within them.
+3. Then ask your **local community** how the band is shared in practice.
+
+### Dated example: United States (eCFR issue 2026-11-05)
+
+| Question | What the rule text says | Course reading |
+|---|---|---|
+| Unlicensed operation | Part 15 devices have no protected frequency, must not cause harmful interference and must accept it <Cite ids="REG-C01" /> | Mesh is a shared, best-effort service |
+| Amateur operation | §97.113 generally prohibits messages encoded to obscure meaning <Cite ids="REG-C05" /> | A ham licence is not a workaround for encrypted mesh |
+| §15.247 | Its 1 W ceiling depends on the operating category: digital modulation needs a 6-dB bandwidth of at least 500 kHz, with a power spectral density limit; frequency hopping has its own conditions <Cite ids="REG-C03 REG-S03" /> | Not a blanket permission for every LoRa setting; a 125 or 250 kHz nominal bandwidth is not the measured 6-dB bandwidth either |
+| §15.249 | 902–928 MHz fundamental limited to 50 mV/m at 3 m <Cite ids="REG-C04" /> | That's a field strength, not "50 mW" |
+| Antennas | §15.203 limits antenna substitution; matching connectors don't settle it <Cite ids="REG-C02" /> | Read the grant and manual |
+
+**Three different power numbers.** Don't compare one with another:
+
+- **Conducted power**, in dBm at the radio's antenna port. A firmware power setting refers to this.
+- **EIRP**, conducted power minus cable loss plus antenna gain: 20 dBm − 2 dB + 3 dBi = 21 dBm (Module 01's
+  knowledge check). This is what leaves the antenna in its strongest direction.
+- **Field strength**, in volts per meter at a stated distance, measured in a test setup. §15.249 is written this
+  way.
+
+### Look up a grant
+
+1. Read the FCC ID on the device or module label. Don't derive one from a model name.
+2. Search it in the FCC Equipment Authorization system. <Cite ids="REG-S07" />
+3. Note the rule parts, frequency range, power, emission designator, antenna conditions and any host or module
+   restrictions. A Bluetooth grant entry says nothing about the LoRa mode.
+4. Compare with your firmware's mode and power and your antenna's type and gain. Ask the grantee if unclear.
+5. Record the result privately: model, FCC ID, grant date, rule, power basis, antenna, firmware, date checked,
+   open questions.
+
+This course could not retrieve any grant (the FCC site returned HTTP 403), so **no board in Module 02 has a
+confirmed authorization** here. <Cite ids="REG-C06" /> Manufacturers' own conditions apply too, such as RAK's
+instruction never to power the radio without its antennas. <Cite ids="HW-C09" />
+
+## Your turn: threat-model a neighborhood group
+
+A neighborhood group uses Meshtastic. They have a private channel with a 32-byte key shared at a meeting. One
+member's node is an MQTT gateway with uplink on that channel, encryption enabled, map reporting on, position
+precision at full. Another member lost their phone last week.
+
+Write down: (1) who can read the group's messages, (2) what the internet can learn, (3) two changes you'd recommend.
+
+<details>
+<summary>Suggested answer</summary>
+
+1. Every key holder, including whoever now has the lost phone if it held the key or a channel URL. The broker
+   receives encrypted channel packets, so it can't read the text without the key. <Cite ids="MT-C22" />
+2. From the map report: the gateway's name, node ID, precise position, hardware, firmware, preset and primary
+   channel name. From uploaded packets: who sent to whom and when. <Cite ids="CUR-C10 CUR-C04" />
+3. Rotate the channel key privately to remaining members (the lost phone is the trigger). <Cite ids="MT-C21" />
+   Turn map reporting off or reduce position precision, and decide as a group whether uplink is needed at all.
+   <Cite ids="CUR-C14" />
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. "Our private channel uses AES-256, so nobody can fake a message." True on Meshtastic 2.7?</summary>
+
+No. Channel encryption is AES-CTR without an authentication tag, and every key holder can write as anyone. <Cite ids="MT-C17" />
+</details>
+
+<details>
+<summary>2. A relay without your DM key forwards your DM. What can it learn?</summary>
+
+The clear header or envelope: who to whom, when, how big, hop or path fields. Not the content. <Cite ids="CUR-C04 MC-028" />
+</details>
+
+<details>
+<summary>3. You removed a member from your MeshCore room server's chat. Are they locked out of admin?</summary>
+
+Not necessarily. Admin is separate: change the admin password and review the ACL too. <Cite ids="MC-024" />
+</details>
+
+<details>
+<summary>4. The firmware runs 15.247 at "up to 1 W", so 30 dBm into a 9 dBi antenna is fine. What's wrong?</summary>
+
+§15.247's ceiling depends on the operating category, bandwidth and antenna gain, and your device's grant sets its
+own conditions. You need the actual grant, not the chip's maximum. <Cite ids="REG-C03 REG-C02" />
+</details>
+
+<details>
+<summary>5. You hold a ham licence. Can you run an encrypted private channel under Part 97?</summary>
+
+Generally no: Part 97 prohibits messages encoded to obscure their meaning, with narrow exceptions. <Cite ids="REG-C05" />
+</details>
+
+<details>
+<summary>Deeper dive: why the course says "not established" about replay</summary>
+
+Meshtastic's duplicate history is bounded state, not a one-time ledger, and the PKI nonce and CCM tag don't create
+one. Admin messages add a session passkey check, which shortens the window but isn't proof against replay inside
+it. MeshCore checks advert timestamps, keeps duplicate caches and checks per-client timestamps on room servers;
+each has its own scope. Neither project's material inspected here supports a blanket "replays are rejected"
+statement, so the course doesn't make one. <Cite ids="MT-C26 MT-C20 MC-023" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="MT-C14 MT-C17 MT-C18 MT-C19 MT-C20 MT-C21 MT-C22 MT-C25 MT-C26 MC-019 MC-020 MC-021 MC-022 MC-023 MC-024 MC-025 MC-026 MC-028 MC-029 MC-032 REG-C01 REG-C02 REG-C03 REG-C04 REG-C05 REG-C06 HW-C09 CUR-C04 CUR-C10 CUR-C12 CUR-C13 CUR-C14 CUR-C24 CUR-C25" />
+- Sources: <Cite ids="MT-S03 MT-S21 MT-S22 MT-S23 MT-S24 MT-S25 MT-S26 MT-S27 MT-S28 MT-S29 MC-S17 MC-S18 MC-S19 MC-S20 REG-S01 REG-S02 REG-S03 REG-S04 REG-S05 REG-S06 REG-S07 CUR-S06 CUR-S07 CUR-S08" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 07: Reliability and capacity](../07-reliability-capacity/).
+Next: [Module 09: Troubleshooting and field tests](../09-troubleshooting-field-tests/). Work a failed link from
+power to app, in order.
+
+<ProgressToggle page="modules/08-privacy-security-rules" />

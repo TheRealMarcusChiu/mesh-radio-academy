@@ -1,0 +1,180 @@
+---
+/**
+ * Small boxes-and-arrows SVG for lessons 03–12. The visible list passed in
+ * the default slot is the text equivalent; the SVG repeats it graphically.
+ * Line styles carry meaning without color: rf solid, ip long dash, wire thin,
+ * broken dotted with an ✕, optional dashed.
+ */
+interface Node {
+  id: string;
+  x: number;
+  y: number;
+  label: string;
+  sub?: string;
+  kind?: 'node' | 'app' | 'bridge' | 'note' | 'bad';
+}
+interface Edge {
+  from: string;
+  to: string;
+  label?: string;
+  kind?: 'rf' | 'ip' | 'wire' | 'broken' | 'dashed';
+  arrow?: boolean;
+}
+interface Props {
+  title: string;
+  desc: string;
+  width?: number;
+  height?: number;
+  nodes: Node[];
+  edges: Edge[];
+  caption: string;
+}
+const { title, desc, width = 360, height = 200, nodes, edges, caption } = Astro.props;
+const uid = 'fd-' + title.toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+const W = 100;
+const H = 44;
+const byId = new Map(nodes.map((n) => [n.id, n]));
+// Trim each edge to the box borders so arrowheads stay visible.
+const lines = edges.map((e) => {
+  const a = byId.get(e.from);
+  const b = byId.get(e.to);
+  if (!a || !b) throw new Error(`FlowDiagram "${title}": unknown node in edge ${e.from}→${e.to}`);
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const t = Math.min(W / 2 / Math.abs(dx || 1e-9), H / 2 / Math.abs(dy || 1e-9));
+  return {
+    ...e,
+    x1: a.x + dx * t,
+    y1: a.y + dy * t,
+    x2: b.x - dx * t,
+    y2: b.y - dy * t,
+    mx: (a.x + b.x) / 2,
+    my: (a.y + b.y) / 2,
+  };
+});
+---
+
+<figure class="flow not-content">
+  <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-labelledby={`${uid}-t ${uid}-d`}>
+    <title id={`${uid}-t`}>{title}</title>
+    <desc id={`${uid}-d`}>{desc}</desc>
+    <defs>
+      <marker id={`${uid}-arrow`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" class="head" />
+      </marker>
+    </defs>
+    {lines.map((l) => (
+      <g>
+        <line
+          x1={l.x1}
+          y1={l.y1}
+          x2={l.x2}
+          y2={l.y2}
+          class:list={['edge', l.kind ?? 'rf']}
+          marker-end={l.arrow === false ? undefined : `url(#${uid}-arrow)`}
+        />
+        {l.kind === 'broken' && <text x={l.mx} y={l.my + 5} text-anchor="middle" class="cross">✕</text>}
+        {l.label && (
+          <text x={l.mx} y={l.my - 6} text-anchor="middle" class="elabel">{l.label}</text>
+        )}
+      </g>
+    ))}
+    {nodes.map((n) => (
+      <g>
+        <rect x={n.x - W / 2} y={n.y - H / 2} width={W} height={H} rx="4" class:list={['box', n.kind ?? 'node']} />
+        <text x={n.x} y={n.sub ? n.y - 3 : n.y + 4} text-anchor="middle">{n.label}</text>
+        {n.sub && <text x={n.x} y={n.y + 12} text-anchor="middle" class="sub">{n.sub}</text>}
+      </g>
+    ))}
+  </svg>
+  <figcaption>{caption}</figcaption>
+  <div class="text-equivalent">
+    <p><strong>Text version of this diagram</strong></p>
+    <slot />
+  </div>
+</figure>
+
+<style>
+  .flow {
+    margin-block: 1.5rem;
+  }
+  svg {
+    width: 100%;
+    max-width: 38rem;
+    height: auto;
+    display: block;
+    font-family: var(--__sl-font);
+  }
+  text {
+    fill: var(--sl-color-gray-1);
+    font-size: 12px;
+  }
+  .sub,
+  .elabel {
+    font-size: 10px;
+    fill: var(--sl-color-gray-2);
+  }
+  .elabel {
+    paint-order: stroke;
+    stroke: var(--sl-color-bg);
+    stroke-width: 4px;
+  }
+  .cross {
+    font-size: 14px;
+    fill: var(--sl-color-gray-1);
+  }
+  .box {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-3);
+  }
+  .box.app {
+    stroke-dasharray: 2 2;
+  }
+  .box.bridge {
+    stroke-width: 2;
+    stroke-dasharray: 8 3;
+  }
+  .box.note {
+    fill: transparent;
+    stroke-dasharray: 4 3;
+  }
+  .box.bad {
+    stroke-width: 2.5;
+  }
+  .edge {
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 2;
+    fill: none;
+  }
+  .edge.rf {
+    stroke: var(--sl-color-accent);
+    stroke-width: 2.5;
+  }
+  .edge.ip {
+    stroke-dasharray: 9 4;
+  }
+  .edge.wire {
+    stroke-width: 1.5;
+  }
+  .edge.dashed {
+    stroke-dasharray: 4 4;
+  }
+  .edge.broken {
+    stroke-dasharray: 2 4;
+    stroke: var(--sl-color-gray-3);
+  }
+  .head {
+    fill: var(--sl-color-gray-2);
+  }
+  .text-equivalent {
+    font-size: var(--sl-text-sm);
+    border-inline-start: 3px solid var(--sl-color-gray-5);
+    padding-inline-start: 0.75rem;
+    margin-top: 0.5rem;
+  }
+  .text-equivalent :global(p),
+  .text-equivalent :global(ul),
+  .text-equivalent :global(ol) {
+    margin-block: 0.25rem;
+  }
+</style>

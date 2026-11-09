@@ -1,0 +1,289 @@
+---
+title: 'Module 04: Meshtastic under the hood'
+description: Trace a broadcast through a four-node diamond with and without duplicate cancellation, a direct message with and without next-hop knowledge, read what a packet carries, and treat MQTT as a separate IP path.
+lesson:
+  module: '04'
+  outcomes:
+    - Trace a broadcast across a diamond and explain when a waiting relay cancels its copy.
+    - Explain hop limit and hop start, and why they count relays rather than radio links.
+    - Trace a direct message that floods, one that follows a learned next hop, and the documented fallback when that next hop fails.
+    - Separate the clear routing header from the encrypted application payload, and say what Protobuf, packet IDs, position, telemetry and traceroute each contribute.
+    - Draw the RF/IP boundary of an MQTT bridge, say which side initiates each transfer, and explain why broker delivery is not RF delivery.
+  estimatedMinutes: 50
+  prerequisites: ['modules/03-first-meshtastic-link']
+  difficulty: intermediate
+  sourceIds: [MT-C03, MT-C04, MT-C05, MT-C06, MT-C07, MT-C08, MT-C09, MT-C10, MT-C11, MT-C12, MT-C13, MT-C22, MT-C23, MT-C26, MT-F01, CUR-C04, CUR-C05, CUR-C06, CUR-C07, CUR-C08, CUR-C09, CUR-C10, CUR-C11, CUR-C14, CUR-C21]
+  baseline: 'Meshtastic 2.7.26.54e0d8d Beta, protobufs 6b1ded4; no broker run'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+Module 03 used two radios side by side. Now there is a node in the middle, and the questions change: who
+repeats a message, who stays quiet, and how does a direct message find its way? Everything below follows the
+pinned 2.7.26 source. The traces are **teaching models**: ordered events with no real timing, collisions or loss.
+
+## Goals and prerequisites
+
+You need [Module 03](../03-first-meshtastic-link/) (roles, channel versus key, delivery indicators) and the
+airtime idea from [Module 01](../01-rf-foundations/). No hardware is needed: run each trace on the
+[routing playground](../../labs/routing-playground/) (Meshtastic side, diamond preset) while you read.
+
+## 1. A broadcast in a diamond
+
+The course's diamond has four nodes. A can hear B and C; B and C can hear D; A cannot hear D. B and C may or may
+not hear each other. Everyone runs `CLIENT` with rebroadcast mode `ALL`. A sends one channel broadcast with hop
+limit 1, and we watch D. <Cite ids="MT-F01" />
+
+<FlowDiagram
+  title="Meshtastic diamond broadcast"
+  desc="A links to B and C. B and C link to D. A dotted link between B and C can be switched on or off. A has no link to D."
+  width={360}
+  height={210}
+  nodes={[
+    { id: 'a', x: 60, y: 105, label: 'A', sub: 'source' },
+    { id: 'b', x: 180, y: 35, label: 'B', sub: 'CLIENT' },
+    { id: 'c', x: 180, y: 175, label: 'C', sub: 'CLIENT' },
+    { id: 'd', x: 300, y: 105, label: 'D', sub: 'watched' },
+  ]}
+  edges={[
+    { from: 'a', to: 'b', kind: 'rf' },
+    { from: 'a', to: 'c', kind: 'rf' },
+    { from: 'b', to: 'd', kind: 'rf' },
+    { from: 'c', to: 'd', kind: 'rf' },
+    { from: 'b', to: 'c', label: 'B–C optional', kind: 'dashed', arrow: false },
+  ]}
+  caption="Thick lines are radio links. The dashed B–C link decides whether C can hear B's relay."
+>
+
+- A reaches B and C directly; it cannot reach D.
+- B and C each reach D.
+- In the "audible" variant, B and C also hear each other. In the "hidden" variant, they don't.
+
+</FlowDiagram>
+
+| Step | B–C audible | B–C hidden |
+|---|---|---|
+| A transmits | B and C both receive it and each queue a relay | Same |
+| B's turn comes first (a seeded teaching choice; real order is randomized and SNR-weighted <Cite ids="MT-C06" />) | B transmits with hop limit now 0. A, C and D hear it | B transmits. A and D hear it; **C does not** |
+| C's decision | C heard the same sender and packet ID over LoRa before its own turn, so it **cancels** its waiting relay <Cite ids="MT-C03" /> | C heard nothing from B, so it keeps its relay queued |
+| D | First copy from B: one delivery. Hop limit 0, so D won't relay | Same: one delivery from B |
+| Later | Nothing more | C transmits; D recognizes a duplicate and doesn't deliver twice |
+| Transmissions | **2** (A, B) | **3** (A, B, C) |
+
+Removing B–C doesn't change what D *receives*; it changes how much airtime the network spends. <Cite ids="MT-C04" />
+At the course's teaching RF profile and an assumed 40-byte frame, each transmission is 82.176 ms on air: 164 ms
+for the audible case against 247 ms for the hidden one. <Cite ids="CUR-C21" /> The extra copy is also a chance
+to collide with someone else, which this model doesn't simulate.
+
+Two role details change this picture. `ROUTER` and `ROUTER_LATE` do **not** use this ordinary cancellation, so a
+diamond full of routers sends more copies. `CLIENT_MUTE` and rebroadcast mode `NONE` never relay. <Cite ids="MT-C05 MT-C07" />
+
+## 2. Hops count relays, not links
+
+Every packet's clear header holds two 3-bit numbers in its flags byte: **hop start** (the budget the sender chose)
+and **hop limit** (what's left). <Cite ids="CUR-C04" /> Each eligible relay decrements the hop limit before
+repeating. A copy that arrives with hop limit 0 can still be delivered; it just can't be relayed again. <Cite ids="MT-C08" />
+
+So in the diamond, D received a copy that crossed **two** radio links (A→B, B→D) but used **one** relay. The
+difference `hop start − hop limit` tells D "one relay away", not "two links away".
+
+*Deeper exception:* favorited infrastructure roles can keep the remaining budget after the first relay, so
+displayed hop counts can undercount real transmissions in those networks. <Cite ids="MT-C09" />
+
+## 3. A direct message, with and without a next hop
+
+A DM (to one node) starts out the same way as a broadcast: with **no next-hop knowledge**, A floods it and any
+eligible node can relay. When an ACK or reply comes back, nodes can learn "to reach D, hand it to the node whose
+last byte is B". That preference is stored **per destination and per hop**. It's not an end-to-end route: each
+node only knows its own next step. <Cite ids="MT-C10" />
+
+The documented fallback case shows what happens when that knowledge is stale:
+
+<FlowDiagram
+  title="Meshtastic DM next-hop fallback"
+  desc="A prefers B as next hop toward D, but the A–B link is down. A–C and C–D work. The last retry floods, C relays, D receives."
+  width={360}
+  height={210}
+  nodes={[
+    { id: 'a', x: 60, y: 105, label: 'A', sub: 'next hop: B' },
+    { id: 'b', x: 180, y: 35, label: 'B' },
+    { id: 'c', x: 180, y: 175, label: 'C' },
+    { id: 'd', x: 300, y: 105, label: 'D', sub: 'destination' },
+  ]}
+  edges={[
+    { from: 'a', to: 'b', label: 'link down', kind: 'broken', arrow: false },
+    { from: 'a', to: 'c', label: 'flood copy', kind: 'rf' },
+    { from: 'b', to: 'd', kind: 'rf', arrow: false },
+    { from: 'c', to: 'd', kind: 'rf' },
+  ]}
+  caption="The preferred next hop B is unreachable. Only the final retransmission, which drops the preference and floods, can use C."
+>
+
+1. Attempt 1: A sends the DM naming B as next hop. C hears it but isn't named, so it stays quiet.
+2. Attempt 2: a retry, still naming B. Nothing.
+3. Attempt 3, the last retransmission: A **clears** its next-hop preference for D and floods the same packet.
+   C is now eligible and relays. D receives it. <Cite ids="MT-C11" />
+4. If D sends an ACK and it gets back to A, A can learn a new preference.
+
+</FlowDiagram>
+
+An isolated sender schedules three attempts in all: the original plus two retransmissions. The archived docs say
+"resent a maximum of three times"; the course follows the code. <Cite ids="MT-C12" /> If no attempt works, the
+sender gives up with a routing error. Note also that hearing a relay repeat your DM is an implicit ACK of that
+hop, not proof D got it. <Cite ids="MT-C13" />
+
+## 4. What a packet carries
+
+A Meshtastic frame has two parts.
+
+- **Clear header, 16 bytes**: destination, sender, packet ID, flags (hop limit, want-ACK, via-MQTT, hop start),
+  channel hash, next hop and relay node. Every receiver, with or without the key, can read these. <Cite ids="CUR-C04" />
+- **Payload**: encrypted with the channel key or, for a DM, with keys derived from both nodes' key pairs
+  (which adds 12 bytes). <Cite ids="CUR-C07" /> Decrypted, it's a `Data` message: an application **port number**
+  and that application's bytes. <Cite ids="CUR-C06" />
+
+| Term | What it is |
+|---|---|
+| **Protobuf** | The schema language that defines `Data`, `Position` and the rest, and encodes them compactly. It's the format, not the encryption. |
+| **Packet ID** | Chosen by the sender and only unique per sender for a while. Nodes spot duplicates by sender + ID, not by text. <Cite ids="MT-C03" /> |
+| **Text** | Port 1. |
+| **Position** | Port 3. How precise it is depends on each channel's position-precision setting. <Cite ids="CUR-C06 CUR-C14" /> |
+| **Node info** | Port 4: names and public key, broadcast periodically (schema default 900 s). <Cite ids="CUR-C09" /> |
+| **Telemetry** | Port 67: battery, environment and similar readings. More telemetry means more airtime for everyone. |
+| **Traceroute** | Port 70. The reply lists node numbers toward the destination and back, with SNR × 4. It is one packet's trip at one moment, not a fixed route, and it adds traffic each time you run it. <Cite ids="CUR-C08" /> |
+
+Some packet fields never leave your node: receive time, receive SNR and RSSI, and queue priority are added locally.
+The channel *index* you see in an app is local too; on air there's only the one-byte hash. <Cite ids="CUR-C05" />
+
+## 5. MQTT: a second path that isn't radio
+
+MQTT lets a node with an internet connection (its own Wi-Fi, or your phone's through client proxy) copy packets
+to a broker and pull packets back. It's optional and **off in every core lab**.
+
+<FlowDiagram
+  title="Meshtastic MQTT RF and IP boundary"
+  desc="Node A transmits over LoRa to gateway G1. G1's MQTT client connects to the broker and publishes. Gateway G2's client subscribed earlier and receives, then G2 transmits over LoRa to node Z. The broker never transmits radio."
+  width={460}
+  height={200}
+  nodes={[
+    { id: 'a', x: 60, y: 160, label: 'Node A' },
+    { id: 'g1', x: 170, y: 160, label: 'Gateway G1', sub: 'uplink' },
+    { id: 'br', x: 230, y: 40, label: 'Broker', sub: 'IP only', kind: 'bridge' },
+    { id: 'g2', x: 290, y: 160, label: 'Gateway G2', sub: 'downlink' },
+    { id: 'z', x: 400, y: 160, label: 'Node Z' },
+  ]}
+  edges={[
+    { from: 'a', to: 'g1', label: 'LoRa', kind: 'rf' },
+    { from: 'g1', to: 'br', label: 'publish', kind: 'ip' },
+    { from: 'br', to: 'g2', label: 'to subscriber', kind: 'ip' },
+    { from: 'g2', to: 'z', label: 'LoRa', kind: 'rf' },
+  ]}
+  caption="Long dashes are IP. Each gateway's MQTT client opens the connection; the broker only answers. Z can receive A's message with no radio path between them."
+>
+
+1. A transmits over LoRa; gateway G1 receives it like any node.
+2. **G1 initiates** the connection to the broker and **publishes** the packet (uplink must be enabled for that
+   channel). <Cite ids="CUR-C11" />
+3. **G2 initiated** its own connection earlier and **subscribed**; the broker passes the packet to it.
+4. G2 transmits it over LoRa (downlink enabled for that channel), so Z receives it.
+5. The broker never transmits radio. A and Z may be continents apart.
+
+</FlowDiagram>
+
+What this means in practice:
+
+- **Not proof of RF delivery.** A message that arrives through a broker says nothing about a radio route. Packets
+  that went through MQTT carry a via-MQTT flag in the header; look for it before celebrating a "long-distance
+  link". <Cite ids="CUR-C04 MT-C22" />
+- **Loops.** A gateway won't re-upload a packet already marked via MQTT, but that guard doesn't prove every
+  multi-gateway setup is loop-free. <Cite ids="MT-C23" />
+- **Metadata and content.** Encrypted or decoded upload, JSON output (always unencrypted) and map reports
+  (unencrypted: names, node ID, position at your precision, hardware, firmware, preset, primary channel name) are
+  separate settings. "OK to MQTT" is a polite request, not cryptography. <Cite ids="CUR-C10 MT-C22" />
+- **Congestion.** Downlink turns internet traffic into airtime on your local channel. Every downlinked packet
+  occupies the same shared spectrum as local traffic.
+- **Timing.** Exact multi-gateway timing and replay behavior are not established; the course doesn't model them. <Cite ids="MT-C26" />
+
+The optional [local MQTT appendix](../../appendix/local-mqtt/) walks through a captured synthetic exchange on a
+broker that never leaves your computer.
+
+## Your turn: predict a chain
+
+Four nodes in a line, A–B–C–D, all `CLIENT`, each hearing only its neighbors. A broadcasts. Predict who receives,
+who relays and the hop limit on each relayed copy, first with hop limit 2, then with hop limit 1. Work it on paper
+with the rule from section 2.
+
+<details>
+<summary>Answer</summary>
+
+- **Hop limit 2:** B receives and relays (limit now 1). C receives and relays (limit now 0). D receives, cannot
+  relay. Three transmissions, three receivers.
+- **Hop limit 1:** B receives and relays (limit 0). C receives, cannot relay. **D gets nothing.** Two
+  transmissions. <Cite ids="MT-C08" />
+
+The budget ran out one node early. Raising the hop limit fixes D but makes every packet travel farther,
+which costs airtime across the whole mesh: Module 07 is about that trade.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. In the audible diamond, why doesn't C relay?</summary>
+
+C heard B's copy (same sender and packet ID) over LoRa before its own turn, and as a `CLIENT` it cancels a waiting
+relay when that happens. <Cite ids="MT-C03" />
+</details>
+
+<details>
+<summary>2. D shows "1 hop" for a packet from A. How many radio transmissions reached it?</summary>
+
+At least two: A→B and B→D. "Hops" counts relays, so one relay means two radio links in this case. <Cite ids="MT-C08" />
+</details>
+
+<details>
+<summary>3. A's DM to D keeps failing through B, then suddenly gets through. What probably happened?</summary>
+
+The final retransmission dropped the stale next-hop preference and flooded, and another relay (C) carried it. <Cite ids="MT-C11" />
+</details>
+
+<details>
+<summary>4. A node that does not have your channel key relays your message. What can it read?</summary>
+
+The clear header: sender, destination, packet ID, hop fields, channel hash, next-hop and relay bytes. Not the
+text. <Cite ids="CUR-C04 MT-C07" />
+</details>
+
+<details>
+<summary>5. Your friend in another state "received" your message. Is that an RF range record?</summary>
+
+Not unless you can rule out MQTT. A broker can carry it between two gateways with no radio path at all; check the
+via-MQTT flag and your own uplink and downlink settings. <Cite ids="CUR-C11 MT-C22" />
+</details>
+
+<details>
+<summary>Deeper dive: what the model leaves out</summary>
+
+- Relay delay is randomized and weighted by SNR, with a separate earlier window for `ROUTER`. The playground's
+  seeded order is a teaching assumption, never a firmware timing. <Cite ids="MT-C06" />
+- A duplicate with a higher remaining hop limit, a sender's own retry and a fallback copy are not always treated
+  as disposable duplicates; "every node relays a packet once" is a simplification. <Cite ids="MT-C11" />
+- `ROUTER_LATE` and favorited `CLIENT_BASE` traffic can adjust a late relay window rather than cancel. <Cite ids="MT-C05" />
+- The traceroute schema has no field for nodes that relayed without recording themselves, so gaps are possible. <Cite ids="CUR-C08" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="MT-C03 MT-C04 MT-C05 MT-C06 MT-C07 MT-C08 MT-C09 MT-C10 MT-C11 MT-C12 MT-C13 MT-C22 MT-C23 MT-C26 MT-F01 CUR-C04 CUR-C05 CUR-C06 CUR-C07 CUR-C08 CUR-C09 CUR-C10 CUR-C11 CUR-C14 CUR-C21" />
+- Sources: <Cite ids="MT-S02 MT-S09 MT-S10 MT-S11 MT-S12 MT-S17 MT-S24 MT-S30 CUR-S01 CUR-S02 CUR-S03 CUR-S06 CUR-S07" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 03: Your first Meshtastic link](../03-first-meshtastic-link/).
+Next: [Module 05: Your first MeshCore link](../05-first-meshcore-link/). The same checkpoints on the other
+protocol, where routing works differently.
+
+<ProgressToggle page="modules/04-meshtastic-under-the-hood" />

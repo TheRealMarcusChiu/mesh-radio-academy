@@ -1,0 +1,257 @@
+---
+title: 'Module 06: MeshCore under the hood'
+description: Follow a flooded MeshCore direct message, the returned path and the next direct packet byte by byte, then break a hop, explore asymmetry, stale routes and path reset, and see where firmware versions change the format.
+lesson:
+  module: '06'
+  outcomes:
+    - Trace a flooded direct message, the PATH and ACK that come back, and a later direct packet on the learned path.
+    - Decode a header byte into route type and payload type, and a path byte into hash width and hop count.
+    - Explain who forwards a direct packet and why a different reachable repeater does not step in.
+    - Diagnose a broken hop, an asymmetric return path and a stale route from what the sender can and cannot see, and recover with an explicit path reset.
+    - State where path width, hop capacity and older firmware limit what you can deploy, and keep the companion protocol separate from the air format.
+  estimatedMinutes: 50
+  prerequisites: ['modules/05-first-meshcore-link']
+  difficulty: intermediate
+  sourceIds: [MC-005, MC-008, MC-009, MC-010, MC-011, MC-012, MC-013, MC-014, MC-015, MC-016, MC-017, MC-018, MC-024, MC-026, MC-027, MC-028, MC-030, MC-F04, CUR-C15, CUR-C18, CUR-C21]
+  baseline: 'MeshCore 1.18.0 role releases (81dbae5)'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+In Module 05 you saw a DM flood once and then go direct. This module opens that up: what's in each packet, who
+forwards it, and what the sender can actually tell when something breaks. All traces are **teaching models**
+built from the pinned 1.18.0 source: ordered events, synthetic one-byte relay prefixes (`b2` for B, `c3` for C),
+schematic encrypted fields, and no real timing.
+
+## Goals and prerequisites
+
+You need [Module 05](../05-first-meshcore-link/) (companions, repeaters, adverts, contacts) and the idea of a clear
+header from [Module 04](../04-meshtastic-under-the-hood/). No hardware is needed: every exercise here is a
+decoding or prediction task on synthetic packets. Keep the
+[routing playground](../../labs/routing-playground/) (MeshCore side) open: its starting state is the "known path
+through B" case below. The [packet inspector](../../labs/packet-inspector/) shows the same fields on synthetic
+packets.
+
+## 1. Flood first, then a learned path
+
+Same diamond as before: A and D are companions with repeating off; B and C are dedicated repeaters; A–B, A–C, B–D
+and C–D work. A and D already know each other as contacts but have no paths.
+
+| # | Event | Why |
+|---|---|---|
+| 1 | A transmits the DM as a **flood** with an empty path | A's path to D is unknown <Cite ids="MC-008" /> |
+| 2 | B relays it with path `[b2]` | Each eligible repeater appends its own prefix to a flood <Cite ids="MC-009" /> |
+| 3 | C also relays its own copy, path `[c3]` | Both repeaters heard A; both are eligible |
+| 4 | D processes B's copy first and drops C's as already seen | First packet wins; it need not be the shortest <Cite ids="MC-010" /> |
+| 5 | D floods a **PATH** packet containing `[b2]`, with the ACK bundled | Returning the route the DM took <Cite ids="MC-008" /> |
+| 6 | A receives it, stores "to D: via `[b2]`" and matches the ACK | A's route to D is learned |
+| 7 | A sends its own returned path back **directly**, so D learns a route to A | D's route to A is separate state <Cite ids="MC-008" /> |
+| 8 | A's next DM is **direct** with path `[b2]` | B matches the first entry, removes it and forwards; C hears it and does nothing <Cite ids="MC-009" /> |
+
+Two routes now exist: A→D and D→A. They are learned separately and need not be mirror images.
+
+## 2. Read the header
+
+A MeshCore packet starts with one header byte, then a path-length byte, then the path, then the payload. <Cite ids="MC-017" />
+
+The header byte packs three fields: route type in bits 0–1, payload type in bits 2–5, payload version in bits 6–7. <Cite ids="CUR-C15" />
+
+| Header | Bits | Meaning |
+|---|---|---|
+| `0x09` | `00 0010 01` | version 0, payload 2 (text), route 1 (**flood**) |
+| `0x0A` | `00 0010 10` | version 0, payload 2 (text), route 2 (**direct**) |
+| `0x11` | `00 0100 01` | advert, flooded |
+| `0x12` | `00 0100 10` | advert, zero-hop (direct route, empty path) |
+
+The path-length byte packs a hash **width** in its top two bits (width = value + 1 bytes) and a hop **count** in its
+low six bits. <Cite ids="CUR-C15 MC-014" />
+
+<FlowDiagram
+  title="MeshCore direct DM before and after relay B"
+  desc="Before B: header 0A, path length 01, path b2, then destination hash, source hash, two-byte MAC and ciphertext. After B: header 0A, path length 00, no path, same payload."
+  width={460}
+  height={170}
+  nodes={[
+    { id: 'h', x: 60, y: 40, label: '0A', sub: 'direct text' },
+    { id: 'l', x: 170, y: 40, label: '01', sub: '1 byte × 1 hop' },
+    { id: 'p', x: 280, y: 40, label: 'b2', sub: 'next relay' },
+    { id: 'pl', x: 395, y: 40, label: 'payload', sub: 'dst·src·MAC·body', kind: 'note' },
+    { id: 'h2', x: 60, y: 135, label: '0A', sub: 'unchanged' },
+    { id: 'l2', x: 170, y: 135, label: '00', sub: 'no hops left' },
+    { id: 'pl2', x: 395, y: 135, label: 'payload', sub: 'unchanged', kind: 'note' },
+  ]}
+  edges={[
+    { from: 'p', to: 'l2', label: 'B removes its entry', kind: 'wire' },
+  ]}
+  caption="Top row: the frame A transmits. Bottom row: the frame B transmits after matching and removing its own prefix."
+>
+
+- A transmits: `0A` (direct text), `01` (one-byte entries, one hop), `b2` (B's prefix), then the payload.
+- The payload is D's one-byte hash, A's one-byte hash, a 2-byte MAC and the encrypted body. These are shown as
+  named fields, not real bytes. <Cite ids="MC-017" />
+- B sees its prefix first in the path, removes it and transmits `0A 00` followed by the unchanged payload.
+- D hears a direct packet with no remaining path, sees its own hash, and decrypts.
+
+</FlowDiagram>
+
+"Text message" is a **payload type**. The body is still encrypted; only the header, path and short hashes are
+readable to any listener. <Cite ids="MC-017 MC-028" />
+
+## 3. Break a hop
+
+Now start from a different state: A has stored path `[b2]` to D, and the **B–D link breaks**. A–C–D still works.
+This is the playground's MeshCore starting state. <Cite ids="MC-F04" />
+
+<FlowDiagram
+  title="MeshCore broken B–D hop"
+  desc="A sends direct via B. B forwards but D cannot hear B. C hears the packet but is not named. After an explicit path reset, a new flood reaches D through C."
+  width={360}
+  height={210}
+  nodes={[
+    { id: 'a', x: 60, y: 105, label: 'A', sub: 'path [b2]' },
+    { id: 'b', x: 180, y: 35, label: 'B', sub: 'named relay' },
+    { id: 'c', x: 180, y: 175, label: 'C', sub: 'not named' },
+    { id: 'd', x: 300, y: 105, label: 'D' },
+  ]}
+  edges={[
+    { from: 'a', to: 'b', label: 'direct', kind: 'rf' },
+    { from: 'b', to: 'd', label: 'broken', kind: 'broken', arrow: false },
+    { from: 'a', to: 'c', kind: 'dashed', arrow: false },
+    { from: 'c', to: 'd', label: 'after reset', kind: 'dashed' },
+  ]}
+  caption="The direct packet follows the stored path only. C could reach D, but it isn't the named relay, so it stays quiet until the path is reset."
+>
+
+1. A sends direct with path `[b2]`. B forwards. D can't hear B.
+2. C heard A's packet but isn't the named relay, so it doesn't forward. <Cite ids="MC-011" />
+3. No ACK reaches A. A knows only "not confirmed".
+4. Someone **resets the path** in the app. That changes A's stored state and transmits nothing. <Cite ids="MC-012" />
+5. The next DM floods. B's copy still dies; C's copy reaches D. D returns a PATH with `[c3]`, and later DMs go
+   through C.
+
+</FlowDiagram>
+
+**What A can observe:** a missing confirmation. Not which hop failed, not whether D is on, not whether D got the
+message and the ACK was lost. Timeout alone doesn't locate a fault.
+
+**Who acts:** the firmware doesn't reroute around B on its own. The project FAQ describes client apps that retry
+and eventually reset and flood, configurable by the user, but the course didn't verify any app's retry code, so
+treat automatic recovery as app behavior, not a protocol guarantee. <Cite ids="MC-013" />
+
+## 4. Asymmetry, stale routes and eligibility
+
+- **Asymmetric return.** Suppose A→C→D works but D→C doesn't, and there's no other way back. D receives and
+  displays A's DM, but D's PATH+ACK never reaches A. A shows "not confirmed" while D's screen shows the message.
+  Missing ACK is not proof of missed delivery; ask the recipient. <Cite ids="MC-030" />
+- **Stale route.** A stored path is a snapshot. When a relay moves, loses power or is reconfigured, the path
+  keeps pointing at it until someone resets it. <Cite ids="MC-012" />
+- **Repeat eligibility.** Hearing a packet doesn't oblige a repeater to forward it. Its forwarding flag, flood
+  scope, hop limits and loop rules all apply, and floods are dropped once seen. <Cite ids="MC-005 MC-010" />
+
+## 5. Room servers: access and retention
+
+A room server is an endpoint, not a relay trick. Members log in; the login code has admin, room-password and
+read-only paths. Admin access is separate from chat access; change the shipped admin password. <Cite ids="MC-024" />
+The server decrypts posts and keeps recent ones in a cyclic queue, 32 by default, so it can show history to members
+who were away. No retention time is promised, and the operator can read the posts. <Cite ids="MC-026 MC-027" />
+
+## 6. Version boundaries
+
+| Boundary | What changes | Practical rule |
+|---|---|---|
+| Path hash width | 1, 2 or 3 bytes per relay entry <Cite ids="MC-014" /> | Wider entries collide less but don't prove identity <Cite ids="MC-015" /> |
+| Older firmware | The CLI docs say forwarders older than 1.14 drop multibyte paths <Cite ids="MC-015" /> | Stay on 1-byte paths until every forwarder is ≥ 1.14 |
+| Hop capacity | Six-bit count: at most 63 one-byte hops, 32 two-byte, 21 three-byte (64-byte path storage) <Cite ids="MC-016" /> | The docs say 64 and give `flood.max` a 0–64 range; the encoding can't show 64 <Cite ids="CUR-C18" /> |
+| Payload version | Header bits 6–7 <Cite ids="CUR-C15" /> | A different field from path width; don't confuse them |
+| Companion protocol | The app-to-companion commands over BLE or USB <Cite ids="MC-018" /> | Never read a BLE capture as an air frame |
+
+## Your turn: decode three packets
+
+Decode each header and path-length byte. Then say who forwards next, and how many path bytes follow.
+
+1. `09 01 c3 …`
+2. `0A 02 b2 c3 …`
+3. A path-length byte of `45`.
+
+<details>
+<summary>Answers</summary>
+
+1. `09`: flooded text. `01`: one-byte entries, one hop recorded. `c3` is the relay that has already forwarded it
+   (C). Floods **append**: the next eligible repeater that hasn't seen it adds its own prefix. 1 path byte.
+2. `0A`: direct text. `02`: one-byte entries, two hops. B is next: it removes `b2`, forwards `0A 01 c3 …`, then C
+   removes `c3`. 2 path bytes. <Cite ids="MC-009" />
+3. `0x45` = `01 000101`: width 2 bytes, count 5, so **10** path bytes. <Cite ids="MC-014 CUR-C15" />
+</details>
+
+Optional airtime extension: at the course's teaching RF profile, an assumed 40-byte frame lasts 82.176 ms. Count
+transmissions for section 1, events 1–8, assuming every packet is that size. <Cite ids="CUR-C21" />
+
+<details>
+<summary>Answer</summary>
+
+DM flood: A, B, C (3). PATH flood: D, B, C (3). A's returned path, direct via B: A, B (2). Next direct DM: A, B (2).
+Total 10 transmissions, 821.76 ms of airtime, under that size assumption. ACKs for the later direct DM would add
+more. Real frames differ in size by type.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. A direct packet's path is `[b2]`. C hears it and can reach D. Does C forward it?</summary>
+
+No. Only the relay named first in the path forwards a direct packet. <Cite ids="MC-011 MC-009" />
+</details>
+
+<details>
+<summary>2. In the flood, D took B's copy although C's had the same hop count. Is that a bug?</summary>
+
+No. Floods are first-packet-wins; later copies are dropped as already seen. <Cite ids="MC-010" />
+</details>
+
+<details>
+<summary>3. A user taps "reset path" and nothing appears on air. Is the app broken?</summary>
+
+No. Reset only clears the stored path. The next send floods. <Cite ids="MC-012" />
+</details>
+
+<details>
+<summary>4. What can an RF listener without any keys learn from a direct DM?</summary>
+
+Timing, length, route and payload type, the relay prefixes and the short source and destination hashes. Not the
+text. <Cite ids="MC-028" />
+</details>
+
+<details>
+<summary>5. Why keep one-byte paths in a mesh that still has a 1.12 repeater?</summary>
+
+The docs say pre-1.14 forwarders drop multibyte paths, so wider paths would silently break routes through that
+repeater. <Cite ids="MC-015" />
+</details>
+
+<details>
+<summary>Deeper dive: the ACK value and what "authenticated" means here</summary>
+
+- The ACK carries a value the code computes with truncated SHA-256, although the payload doc calls it a CRC. A
+  matching ACK is protocol evidence, not a human reading. <Cite ids="MC-030" />
+- The 2-byte MAC on a DM authenticates the ciphertext under the pair's shared secret. It's short and separate from
+  any replay protection. Module 08 compares this with Meshtastic. <Cite ids="MC-022 MC-023" />
+- Transport-code route types (0 and 3) insert extra bytes before the path-length byte, so offsets shift. The course
+  fixtures use plain flood and direct only. <Cite ids="CUR-C15 MC-S08" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="MC-005 MC-008 MC-009 MC-010 MC-011 MC-012 MC-013 MC-014 MC-015 MC-016 MC-017 MC-018 MC-022 MC-023 MC-024 MC-026 MC-027 MC-028 MC-030 MC-F04 CUR-C15 CUR-C18 CUR-C21" />
+- Sources: <Cite ids="MC-S08 MC-S09 MC-S10 MC-S11 MC-S12 MC-S16 MC-S17 MC-S19 MC-S22 CUR-S09 CUR-S10" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 05: Your first MeshCore link](../05-first-meshcore-link/).
+Next: [Module 07: Reliability and capacity](../07-reliability-capacity/). Put both protocols on the same topologies
+and count the airtime.
+
+<ProgressToggle page="modules/06-meshcore-under-the-hood" />

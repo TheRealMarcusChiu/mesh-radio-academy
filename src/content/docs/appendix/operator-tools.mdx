@@ -1,0 +1,134 @@
+---
+title: 'Appendix: operator tools'
+description: One read-only Meshtastic Python CLI exercise and one read-only MeshCore repeater console exercise, each with install or connection prerequisites, a version check, synthetic sample output, how to read one field, and the matching simulation trace.
+---
+
+import Cite from '../../../components/Cite.astro';
+
+For technically inclined learners. Both exercises **read** state; neither changes settings or sends a message on
+purpose. Both are optional: each ends with a simulation equivalent that needs no hardware.
+
+:::caution[What was and wasn't run]
+No command on this page was run against a radio for this course. The Meshtastic CLI was installed in an isolated
+environment and its `--version` and `--help` were executed; its `--get` output format was checked against a
+synthetic cached configuration, not a device. The MeshCore console commands and output shapes come from the pinned
+source and docs; nothing was connected. Every sample output below is labeled **SYNTHETIC**. <Cite ids="MT-C24 MC-031" />
+:::
+
+## Exercise 1: Meshtastic Python CLI, read the hop limit
+
+### Prerequisites
+
+- Python with `venv`, a USB **data** cable, the node's serial device path (check it; don't guess), permission to use
+  the port, and no other app holding it.
+- A node already set up with region and RF settings (Module 03). Connecting can reset some boards or let the
+  firmware do its normal background work, so "read-only" means *no requested change and no test message*, not radio
+  silence.
+- Course client: `meshtastic==2.7.11`, matching firmware 2.7.26 in the baselines. <Cite ids="MT-S05" />
+
+### Install and version check
+
+```sh
+python3 -m venv .venv
+.venv/bin/python -m pip install 'meshtastic==2.7.11'
+.venv/bin/meshtastic --version
+```
+
+Expected: `2.7.11`. If you see another version, you're not on the course baseline; results may differ.
+
+### The read
+
+```sh
+# Replace the port with the path you verified for your node.
+.venv/bin/meshtastic --port /dev/ttyUSB0 --get lora.hop_limit
+```
+
+`--get` reads one preference; it doesn't call a setter. Don't add any setting, sending, traceroute, reset, export,
+QR or channel-URL option, and skip `--info`: it and full exports show much more than one field, including channel
+settings. The older docs' `--no-time` flag does nothing in 2.7.11, so it protects nothing. <Cite ids="MT-C24" />
+
+### Sample output (SYNTHETIC)
+
+```text
+SYNTHETIC - produced from a cached test configuration, no radio connected
+lora.hop_limit: 3
+```
+
+### Read one field
+
+`lora.hop_limit: 3` is the node's **configured relay budget** for packets it originates. It is not how many hops any
+message actually took. The schema allows at most 7 and defaults to 3. <Cite ids="CUR-C02" /> Each relay decrements
+the budget, and it counts relays, not radio links. <Cite ids="MT-C08" />
+
+### Simulation equivalent
+
+With budget 3, A sends a channel message with hop start 3 and hop limit 3. In Module 04's four-node chain: B relays
+with 2 left, C with 1, D receives with 1 and can relay once more. Lowering it to 2 stops at D with 0 left; changing
+the number in a simulation is **not** a write to hardware.
+
+## Exercise 2: MeshCore repeater console, read version and counters
+
+### Prerequisites
+
+- A node you're allowed to operate, already running `repeater-v1.18.0` for its board, with band antenna attached.
+- USB data cable, serial permissions, and a browser with Web Serial. Use the console in the MeshCore flasher or
+  config tool. The repeater's serial port runs at 115200 baud for a terminal alternative. <Cite ids="MC-S04 MC-S23" />
+- These web tools can also erase, flash and export keys. Open the **console** only. Don't click save, export,
+  private-key, advert, reboot, erase or update controls.
+
+### Version check and reads
+
+Type one command at a time and wait for each reply:
+
+```text
+ver
+board
+clock
+stats-core
+stats-radio
+stats-packets
+neighbors
+```
+
+`ver` should report 1.18.0; a version string isn't proof of which binary is installed, but it should match your
+records. `board` names the hardware build. `stats-*` are serial-only counters. `clock` shows UTC time; `neighbors`
+lists up to the 8 most recent adverts heard. <Cite ids="MC-031 CUR-C19" />
+
+**Never type in this exercise:** `password …` (its reply echoes the new admin password, and any node using it joins
+the admin ACL), `erase` (destructive), `reboot`, `advert`, `set …`, or any `get` for keys or passwords. <Cite ids="CUR-C20" />
+
+### Sample output (SYNTHETIC)
+
+```text
+SYNTHETIC - fictional values, not captured from a device; prompts omitted
+> ver
+v1.18.0 (Build: <device build date>)
+> board
+<hardware build name reported by board>
+> stats-core
+{"battery_mv":3980,"uptime_secs":600,"errors":0,"queue_len":0}
+> stats-radio
+{"noise_floor":-116,"last_rssi":-101,"last_snr":5.25,"tx_air_secs":2,"rx_air_secs":7}
+> stats-packets
+{"recv":14,"sent":6,"flood_tx":4,"direct_tx":2,"flood_rx":11,"direct_rx":3,"recv_errors":0}
+```
+
+### Read one field
+
+`last_snr: 5.25` is the SNR of the **last packet** the radio received, in dB. It's not a link margin, not the
+quality of every neighbor, and not proof your last DM arrived. `tx_air_secs` and `rx_air_secs` are running totals
+rounded down to whole seconds, not per-packet airtime. `sent` counts transmissions, not deliveries, so don't divide
+these counters into a delivery ratio. <Cite ids="MC-031 RF-C12" />
+
+### Simulation equivalent
+
+In the [routing playground](../../labs/routing-playground/) MeshCore side, pause right after A's direct send fails
+at the broken B–D link. A synthetic console on B would show one more `direct_tx`; D's counters would not change; A
+would show no ACK. The counters tell you B forwarded; only D's display tells you about delivery. These sample
+counters are a schema illustration, not the playground's exact numbers. <Cite ids="MC-011 MC-030" />
+
+## References
+
+- Claims: <Cite ids="MT-C08 MT-C24 CUR-C02 CUR-C19 CUR-C20 MC-011 MC-030 MC-031 RF-C12" />
+- Sources: <Cite ids="MT-S05 MC-S04 MC-S16 MC-S23 CUR-S04 CUR-S10" />
+- Back to [Module 12](../../modules/12-capstone-operator-reference/).

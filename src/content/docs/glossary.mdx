@@ -1,0 +1,175 @@
+---
+title: Glossary
+description: Plain-language definitions of the radio, mesh, security and regulatory terms used in Mesh Radio Academy, with evidence links where a definition makes a material claim.
+---
+
+import Cite from '../../components/Cite.astro';
+
+Definitions are short and plain first; where a definition depends on a firmware version or a rule, it links to the
+evidence. "MT" means Meshtastic 2.7.26, "MC" means MeshCore 1.18.0. Each entry names the module that teaches it.
+
+## A–C
+
+**ACK (acknowledgment).** A protocol reply saying a packet arrived. Not a human read receipt. MT distinguishes an
+*implicit* ACK (hearing a relay repeat your packet) from an *explicit* ACK from the destination; neither is signed in
+2.7. MC returns an ACK value computed with truncated SHA-256. <Cite ids="MT-C13 MT-C14 MC-030" /> Modules 03, 05.
+
+**Admin / ACL.** Remote control of a node's settings. MT uses authorized admin public keys plus a session passkey;
+MC repeaters and room servers use a password and an access-control list. <Cite ids="MT-C20 MC-024" /> Module 08.
+
+**Advert.** A MeshCore packet announcing a node's public key, name, role and optional location. *Zero-hop* adverts
+reach direct neighbors only; *flooded* adverts can cross repeaters. Hearing one gives an identity, not a route. <Cite ids="MC-006 MC-007" /> Module 05.
+
+**Airtime (time on air).** How long one transmission occupies the channel. Depends on spreading factor, bandwidth,
+coding rate, preamble, header, CRC and payload bytes. <Cite ids="RF-C01" /> Module 01.
+
+**Antenna gain (dBi).** How much an antenna concentrates power in some directions compared with an ideal antenna
+radiating equally everywhere. It doesn't add power. Module 01.
+
+**Bandwidth (BW).** The width of the radio channel a LoRa signal uses, in kHz. Doubling it halves symbol time. In
+regulation, "6-dB bandwidth" is a measured emission width, not the modem setting. <Cite ids="REG-C03" /> Modules 01, 08.
+
+**BLE.** Bluetooth Low Energy, the usual phone-to-node link. It carries an app protocol, not radio packets. <Cite ids="LW-C03" /> Module 00.
+
+**Bridge.** Anything that copies mesh traffic to another network, such as an MQTT gateway. It adds observers and a
+path that isn't radio. <Cite ids="MT-C22 MC-029" /> Modules 04, 08.
+
+**Broker (MQTT).** The server that MQTT clients connect to, publish to and subscribe from. It never transmits radio. Module 04.
+
+**Channel (logical).** A named group with its own key. Not a radio frequency. <Cite ids="MT-C15" /> Module 03.
+
+**Channel hash.** One byte in an MT header that hints which channel key to try. Not the name, not the key. <Cite ids="CUR-C04" /> Module 03.
+
+**Channel URL.** An MT link that encodes channel settings, keys included, plus LoRa settings. Treat it as a secret. <Cite ids="CUR-C12" /> Module 03.
+
+**CLIENT, CLIENT_MUTE.** MT roles. `CLIENT` is an ordinary endpoint that can relay; `CLIENT_MUTE` never relays. <Cite ids="MT-C07" /> Module 03.
+
+**Coding rate (CR).** Extra error-correction bits, written 4/5 to 4/8. MT custom settings store the denominator
+(5 for 4/5). <Cite ids="CUR-C03" /> Module 01.
+
+**Companion.** An MC node that a phone app controls. Repeating is off by default. <Cite ids="MC-004" /> Module 05.
+
+**Companion protocol.** The MC app-to-node command protocol over BLE or USB. Not the air format. <Cite ids="MC-018" /> Module 06.
+
+**Conducted power.** Transmitter power measured at the antenna port, in dBm. Module 08.
+
+**CRC.** A checksum that lets a receiver detect a corrupted LoRa frame. Module 01.
+
+## D–H
+
+**dB, dBm.** dB is a power ratio, 10·log10(P2/P1); dBm is power relative to 1 mW. <Cite ids="RF-C09" /> Module 01.
+
+**Direct message (DM).** A message to one node. MT encrypts DMs with keys derived from both nodes' key pairs; MC
+from both identities. <Cite ids="MT-C18 MC-019" /> Module 08.
+
+**Direct route (MC).** A packet that carries a stored path; only the named relays forward it. <Cite ids="MC-009" /> Module 06.
+
+**Duplicate suppression.** Recognizing a packet already seen (MT: same sender and packet ID) and not delivering or
+relaying it again. MT clients can also *cancel* a waiting relay on hearing a duplicate. <Cite ids="MT-C03" /> Module 04.
+
+**EIRP.** Effective isotropic radiated power: conducted power minus cable loss plus antenna gain. Module 08.
+
+**Erase / factory reset.** Destroys settings and identity keys. Never a first diagnostic. <Cite ids="HW-C12" /> Modules 02, 09.
+
+**FCC ID / grant.** In the US, the identifier on a device's label and the authorization record with its conditions. <Cite ids="REG-C06" /> Module 08.
+
+**Field strength.** Radiated signal measured in volts per meter at a stated distance. §15.249's limit is written
+this way. <Cite ids="REG-C04" /> Module 08.
+
+**Flood.** Sending a packet so every eligible relay repeats it once. MT broadcasts and unknown-route DMs use managed
+flooding; MC uses floods for discovery and unknown routes. <Cite ids="MC-010" /> Modules 04, 06.
+
+**Frequency slot.** In MT, which center frequency in the region the node uses. Slot 0 derives it from the primary
+channel's name. <Cite ids="CUR-C03 MT-C16" /> Module 03.
+
+**Fresnel zone.** The football-shaped region around the line between two antennas that should be clear of obstacles. <Cite ids="RF-C11" /> Module 01.
+
+**Hidden transmitter.** Two senders that can't hear each other and may overlap at a receiver between them. <Cite ids="RF-C13" /> Module 07.
+
+**Hop limit, hop start.** MT header fields: the relay budget remaining and the budget the sender started with. They
+count relays, not links. Default 3, max 7. <Cite ids="MT-C08 CUR-C02" /> Module 04.
+
+## I–P
+
+**Link budget / link margin.** All gains and losses from transmitter to receiver; margin is received power minus
+receiver sensitivity. A planning number, not a promise. <Cite ids="RF-C07" /> Module 01.
+
+**LoRa.** A long-range, low-rate radio modulation: the physical layer under both protocols. <Cite ids="LW-C01" /> Module 00.
+
+**LoRaWAN.** A separate network specification with gateways and network servers. Not Meshtastic or MeshCore. <Cite ids="LW-C01" /> Module 00.
+
+**Low-data-rate optimization (LDRO).** A LoRa setting required when symbols last over 16 ms. <Cite ids="RF-C02" /> Module 01.
+
+**MAC (message authentication code).** A short tag that shows a ciphertext wasn't changed by someone without the key.
+MC uses a 2-byte truncated HMAC. <Cite ids="MC-022" /> Module 08.
+
+**Map report.** An unencrypted MT MQTT message with names, node ID, position, hardware, firmware and settings. <Cite ids="CUR-C10" /> Module 08.
+
+**Metadata.** What stays visible around encrypted content: who, to whom, when, size, route. <Cite ids="CUR-C04 MC-028" /> Module 08.
+
+**Modem preset.** An MT named bundle of bandwidth, spreading factor and coding rate, such as `LONG_FAST`. <Cite ids="CUR-C02" /> Module 03.
+
+**MQTT.** A publish/subscribe IP protocol used to bridge mesh traffic. Optional and off in the core labs. <Cite ids="MT-C22" /> Module 04.
+
+**Next hop.** MT's per-destination preference for which neighbor should relay a DM; one byte in the header. <Cite ids="MT-C10" /> Module 04.
+
+**Packet delivery ratio (PDR).** Unique messages delivered ÷ messages scheduled, with the sample size. <Cite ids="CUR-C22" /> Module 07.
+
+**Packet ID.** A sender-chosen number that, with the sender, identifies a packet for duplicate detection. <Cite ids="MT-C03" /> Module 04.
+
+**Part 15 / Part 97.** US rules for unlicensed devices and for the amateur radio service. <Cite ids="REG-C01 REG-C05" /> Module 08.
+
+**Path (MC).** An ordered list of relay prefixes, 1–3 bytes each. Floods append; direct packets consume. <Cite ids="MC-009 MC-014" /> Module 06.
+
+**Payload type (MC).** Header bits naming what a packet carries: text, ACK, advert, path and others. <Cite ids="CUR-C15" /> Module 06.
+
+**PKI.** Public-key infrastructure: here, MT's public-key DM encryption, which adds 12 bytes. <Cite ids="MT-C18 CUR-C07" /> Module 08.
+
+**Polarization.** The orientation of the radio wave's electric field; mismatched antennas lose signal. <Cite ids="RF-C14" /> Module 01.
+
+**Port number (MT).** Which application a payload belongs to: text 1, position 3, telemetry 67, traceroute 70. <Cite ids="CUR-C06" /> Module 04.
+
+**Position precision.** MT per-channel setting for how precise shared positions are. <Cite ids="CUR-C14" /> Module 08.
+
+**Protobuf.** The schema format MT uses to encode its messages compactly. Module 04.
+
+**PSK.** Pre-shared key: a channel key. MT keys are 16 or 32 bytes; one-byte shorthands are public. <Cite ids="CUR-C13" /> Module 08.
+
+## R–Z
+
+**Region.** The MT setting that selects the legal band plan. With region unset the node doesn't transmit. <Cite ids="CUR-C01" /> Module 03.
+
+**Rebroadcast mode.** MT setting controlling which packets a node may relay (`ALL`, `NONE` and others). <Cite ids="MT-C07" /> Module 04.
+
+**Relay.** Any node that retransmits a packet for others.
+
+**Repeater (MC).** A dedicated forwarding image, separate from companion firmware. <Cite ids="HW-C04" /> Module 05.
+
+**Replay.** Re-sending a captured valid packet later. Neither protocol's inspected code supports a blanket claim of
+protection. <Cite ids="MT-C26 MC-023" /> Module 08.
+
+**Room server (MC).** A node that stores recent posts for members who log in. It decrypts posts; its operator can read them. <Cite ids="MC-026 MC-027" /> Module 05.
+
+**ROUTER, ROUTER_LATE.** MT infrastructure roles with different relay timing; they skip ordinary duplicate
+cancellation. For coordinated fixed sites. <Cite ids="MT-C05" /> Module 10.
+
+**RSSI.** Received signal strength indicator, in dBm. Doesn't prove decoding. <Cite ids="RF-C12" /> Module 01.
+
+**Sample size (n).** How many trials a percentage comes from. Write it beside every PDR. <Cite ids="CUR-C22" /> Module 07.
+
+**SNR.** Signal-to-noise ratio, in dB. <Cite ids="RF-C12" /> Module 01.
+
+**Spreading factor (SF).** How many chirps encode a symbol; each step up roughly doubles airtime. <Cite ids="MT-C27" /> Module 01.
+
+**Sync word.** A framing value in LoRa packets. Matching frequency and modem settings alone don't establish that one
+radio accepts another's frames; framing must also be compatible. <Cite ids="LW-C04" /> Module 00.
+
+**Telemetry.** Readings such as battery and environment sent on MT port 67. Module 04.
+
+**Traceroute.** An MT request that records node numbers and SNR along one packet's trip. One sample, not a stable route. <Cite ids="CUR-C08" /> Module 04.
+
+**Uplink / downlink.** MT per-channel MQTT switches: uplink copies mesh traffic to the internet; downlink brings it back onto the mesh. <Cite ids="CUR-C11" /> Module 04.
+
+**via MQTT.** An MT header flag marking a packet that passed through MQTT. <Cite ids="CUR-C04 MT-C23" /> Module 04.
+
+**Wavelength (λ).** Distance of one oscillation; about 0.328 m at 915 MHz. <Cite ids="RF-C10" /> Module 01.
