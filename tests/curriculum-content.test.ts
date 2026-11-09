@@ -1,16 +1,15 @@
-// Contracts for lessons 03–12, the curriculum reference pages and the
-// curriculum claim/source fragment. The fragment is checked together with the
-// base ledger (union) without changing the base ledger or its tests.
+// Contracts for lessons 03–12, the curriculum reference pages, the CUR rows
+// merged into the canonical ledger, and the shared navigation that exposes them.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
+import { MODULES } from '../src/lib/curriculum.ts';
 
 const read = (p: string) => readFileSync(p, 'utf8');
 const ANCHOR = /<a id="([a-z0-9-]+)"><\/a>([A-Z0-9-]+)/g;
 const ID = /\b(?:MT|MC|RF|HW|REG|NTX|LW|CUR)-[A-Z0-9]+\b/g;
 
 const BASE = ['research/claims.md', 'research/sources.md'];
-const FRAGMENT = ['research/claims-curriculum.md', 'research/sources-curriculum.md'];
 
 const LESSONS = [
   ['03', '03-first-meshtastic-link'],
@@ -46,23 +45,36 @@ function defined(files: string[]) {
   return ids;
 }
 
-const union = () => defined([...BASE, ...FRAGMENT]);
+const union = () => defined(BASE);
 const frontmatter = (text: string) => text.split('---')[1];
 
-test('fragment defines CUR IDs once, only CUR IDs, with matching anchors, disjoint from the base ledger', () => {
-  const base = defined(BASE);
-  const frag = defined(FRAGMENT);
-  for (const id of frag.keys()) {
-    assert.match(id, /^CUR-[CS]\d{2}$/, `${id} is not a CUR-Cnn/CUR-Snn ID`);
-    assert.ok(!base.has(id), `${id} collides with the base ledger`);
+test('canonical ledger defines every CUR claim (C01–C27) and source (S01–S11) exactly once, claims vs sources in the right file', () => {
+  const ids = defined(BASE);
+  const want = [
+    ...Array.from({ length: 27 }, (_, i) => `CUR-C${String(i + 1).padStart(2, '0')}`),
+    ...Array.from({ length: 11 }, (_, i) => `CUR-S${String(i + 1).padStart(2, '0')}`),
+  ];
+  for (const id of want) {
+    assert.equal(ids.get(id), id.startsWith('CUR-S') ? 'research/sources.md' : 'research/claims.md', `${id} placement`);
   }
-  assert.ok([...frag.keys()].filter((id) => id.startsWith('CUR-C')).length >= 20);
-  assert.ok([...frag.keys()].filter((id) => id.startsWith('CUR-S')).length >= 10);
+  assert.deepEqual([...ids.keys()].filter((id) => id.startsWith('CUR-')).sort(), want.sort(), 'no unexpected CUR IDs');
+  // The pre-merge fragment files still exist (their removal is an integrator step); until then
+  // they must not drift from the canonical rows, which are the ones rendered and validated.
+  for (const [fragment, canonical] of [
+    ['research/claims-curriculum.md', 'research/claims.md'],
+    ['research/sources-curriculum.md', 'research/sources.md'],
+  ]) {
+    if (!existsSync(fragment)) continue;
+    const canon = new Set(read(canonical).split('\n'));
+    for (const row of read(fragment).split('\n').filter((l) => l.startsWith('| <a id="cur-'))) {
+      assert.ok(canon.has(row), `${fragment} row differs from ${canonical}: ${row.slice(0, 50)}`);
+    }
+  }
 });
 
-test('every fragment claim row has scope, evidence that resolves, a check date and a status', () => {
+test('every CUR claim row has scope, evidence that resolves, a check date and a status', () => {
   const ids = union();
-  const rows = read('research/claims-curriculum.md')
+  const rows = read('research/claims.md')
     .split('\n')
     .filter((l) => l.startsWith('| <a id="cur-c'));
   assert.ok(rows.length >= 20);
@@ -78,11 +90,52 @@ test('every fragment claim row has scope, evidence that resolves, a check date a
   }
 });
 
-test('fragment code links point at immutable commits, not moving branches', () => {
-  for (const f of FRAGMENT) {
+test('ledger code links point at immutable commits, not moving branches (incl. raw.githubusercontent)', () => {
+  for (const f of BASE) {
     const moving = [...read(f).matchAll(/https:\/\/(?:github\.com|raw\.githubusercontent\.com)\/[^\s)|]+\/(?:blob|tree)?\/?(main|master|develop)\b[^\s)|]*/g)];
     assert.deepEqual(moving.map((m) => m[0]), [], f);
   }
+});
+
+// Phase 1 integration: the curriculum is reachable through shared navigation.
+const REFERENCE_SLUGS = ['glossary', 'comparison', 'appendix/operator-tools', 'appendix/local-mqtt', 'reference/field-checklist'];
+const LAB_SLUGS = ['rf-sandbox', 'routing-playground', 'packet-inspector', 'field-planner'];
+
+test('curriculum metadata publishes all 13 modules with slugs that exist', () => {
+  assert.equal(MODULES.length, 13);
+  for (const m of MODULES) {
+    assert.ok(m.slug, `module ${m.number} has no published slug`);
+    assert.ok(m.slug.startsWith(`modules/${m.number}-`), `module ${m.number} slug ${m.slug}`);
+    assert.ok(existsSync(`src/content/docs/${m.slug}.mdx`), `${m.slug} missing`);
+  }
+});
+
+test('sidebar lists all 13 lessons, the five references and the lab index', () => {
+  const config = read('astro.config.mjs');
+  for (const m of MODULES) assert.match(config, new RegExp(`slug: '${m.slug}'`), `sidebar lacks ${m.slug}`);
+  for (const s of [...REFERENCE_SLUGS, 'labs']) assert.match(config, new RegExp(`'${s}'`), `sidebar lacks ${s}`);
+});
+
+test('Module 02 points forward to the real Module 03, not "being written"', () => {
+  const next = read('src/content/docs/modules/02-hardware-first-boot.mdx').split('## Next')[1];
+  assert.match(next, /\]\(\.\.\/03-first-meshtastic-link\/\)/);
+  assert.doesNotMatch(next, /being written/);
+});
+
+test('lab index links all four frozen lab routes base-relatively and marks unbuilt labs as pending, not done', () => {
+  const index = read('src/content/docs/labs/index.mdx');
+  for (const lab of LAB_SLUGS) assert.match(index, new RegExp(`\\]\\(\\./${lab}/\\)`), `lab index lacks ${lab}`);
+  for (const lab of ['rf-sandbox', 'packet-inspector', 'field-planner']) {
+    assert.ok(!existsSync(`src/content/docs/labs/${lab}.mdx`), `${lab} must come from its own lane, not a stub here`);
+  }
+  assert.match(index, /integration pending/i);
+});
+
+test('citation groups can wrap between IDs while each ID stays whole', () => {
+  const cite = read('src/components/Cite.astro');
+  const rule = (sel: string) => cite.match(new RegExp(`\\${sel}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+  assert.doesNotMatch(rule('.cite'), /nowrap/, '.cite must not forbid wrapping the whole group');
+  assert.match(rule('.cite a'), /white-space:\s*nowrap/, 'each ID link stays on one line');
 });
 
 test('lessons 03–12 exist with metadata matching their file names and resolvable source IDs', () => {
@@ -130,10 +183,10 @@ test('each lesson 03–12 carries the full teaching contract', () => {
   }
 });
 
-test('every ID cited in curriculum pages exists in the base ledger or the fragment', () => {
+test('every ID cited in curriculum pages exists in the canonical ledger', () => {
   const ids = union();
   const missing: string[] = [];
-  for (const f of [...LESSONS.map(([, s]) => lessonPath(s)), ...REFERENCE_PAGES, ...FRAGMENT]) {
+  for (const f of [...LESSONS.map(([, s]) => lessonPath(s)), ...REFERENCE_PAGES, ...BASE]) {
     for (const [id] of read(f).matchAll(ID)) if (!ids.has(id)) missing.push(`${f}: ${id}`);
   }
   assert.deepEqual(missing, []);
@@ -180,7 +233,7 @@ test('CUR-SPEC01: map-report precision is never taught through the per-channel p
   }
   const answer = read(lessonPath('08-privacy-security-rules')).split('## Your turn')[1].split('## Knowledge check')[0];
   assert.match(answer, /CUR-C27/, 'threat-model answer must cite the map-report precision claim');
-  assert.match(claimRow('research/claims-curriculum.md', 'CUR-C27'), /12.{1,3}15/);
+  assert.match(claimRow('research/claims.md', 'CUR-C27'), /12.{1,3}15/);
 });
 
 test('CUR-SPEC02: capstone learning airtime equals its counted frames × the CUR-C21 frame time', () => {
@@ -195,7 +248,7 @@ test('CUR-SPEC02: capstone learning airtime equals its counted frames × the CUR
 });
 
 test('CUR-SPEC03: zero-hop advert default is the documented factory-fresh lifecycle, not a contradiction', () => {
-  for (const row of [claimRow('research/claims-curriculum.md', 'CUR-C17'), claimRow('research/sources-curriculum.md', 'CUR-S10')]) {
+  for (const row of [claimRow('research/claims.md', 'CUR-C17'), claimRow('research/sources.md', 'CUR-S10')]) {
     assert.doesNotMatch(row, /inconsistent|unresolved/i, row.slice(0, 60));
     assert.match(row, /saving any setting/i, row.slice(0, 60));
   }
@@ -214,7 +267,7 @@ test('CUR-SPEC05: glossary defines spreading factor through symbol time, not a c
   assert.match(sf, /RF-C01/);
 });
 
-test('verified calculations in the fragment reproduce', () => {
+test('verified calculations in the CUR claims reproduce', () => {
   // SX1276 Rev. 4 §4.1.1.7 at the RF-F01 profile: SF7, 125 kHz, CR 4/5, 8-symbol preamble, explicit header, CRC on.
   const airtimeMs = (pl: number, sf = 7, bw = 125_000, cr = 1, pre = 8, ih = 0, crc = 1, de = 0) => {
     const n = 8 + Math.max(Math.ceil((8 * pl - 4 * sf + 28 + 16 * crc - 20 * ih) / (4 * (sf - 2 * de))) * (cr + 4), 0);
@@ -224,9 +277,9 @@ test('verified calculations in the fragment reproduce', () => {
   assert.deepEqual([airtimeMs(40).n, airtimeMs(40).ms.toFixed(3)], [68, '82.176']);
   assert.equal(airtimeMs(25).ms.toFixed(3), '61.696');
   assert.equal(airtimeMs(60).ms.toFixed(3), '112.896');
-  const claims = read('research/claims-curriculum.md');
+  const claims = read('research/claims.md');
   for (const v of ['82.176 ms', '61.696 ms', '112.896 ms', '17 of 20 is 85%', '15.901 mA', '90.56 h']) {
-    assert.ok(claims.includes(v), `fragment lost ${v}`);
+    assert.ok(claims.includes(v), `ledger lost ${v}`);
   }
   assert.equal((17 / 20) * 100, 85);
   const avg = 0.01 * 120 + 0.98 * 15 + 0.01 * 0.1;

@@ -1,6 +1,6 @@
 ---
 title: Course outline
-description: The thirteen modules of Mesh Radio Academy, which are available now and which are still being written.
+description: The thirteen modules of Mesh Radio Academy, the four labs, and the reference pages.
 ---
 
 import CurriculumOutline from '../../components/CurriculumOutline.astro';
@@ -16,11 +16,20 @@ compare them fairly.
 
 ## Labs
 
-- [Routing playground](../labs/routing-playground/): available as a narrow first preset. It covers a
-  Meshtastic broadcast diamond and a MeshCore known-path failure with recovery. Topology presets, the
-  Meshtastic DM fallback, MeshCore first-contact path learning and asymmetric links are still being built.
-- RF and link-budget calculator, packet inspector and settings bench, and field planner: being built. Until
-  then, Module 01 works its examples by hand.
+The [lab index](../labs/) lists all four hardware-free labs and their status in this build:
+
+- [Routing playground](../labs/routing-playground/): available. It covers a Meshtastic broadcast diamond and a
+  MeshCore known-path failure with recovery.
+- [RF sandbox](../labs/rf-sandbox/), [packet inspector](../labs/packet-inspector/) and
+  [field planner](../labs/field-planner/): integration pending. Each is built in its own work stream; until it
+  joins this site, the lessons work the same ideas by hand.
+
+## Reference
+
+[Glossary](../glossary/) · [Comparing Meshtastic and MeshCore](../comparison/) ·
+[Operator tools appendix](../appendix/operator-tools/) · [Local MQTT appendix](../appendix/local-mqtt/) ·
+[Printable field checklist](../reference/field-checklist/) · [Claim ledger](../reference/claims/) ·
+[Source registry](../reference/sources/)
 
 <ProgressPanel />
 

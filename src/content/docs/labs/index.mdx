@@ -1,0 +1,35 @@
+---
+title: Labs
+description: The four hardware-free labs - RF sandbox, routing playground, packet inspector and field planner - what each one is for, which lessons use it, and which are not yet integrated into this build.
+---
+
+Every lab runs in your browser with simulated, labeled data. None needs a radio, an account or a network
+connection, and none stores anything outside your browser. Results are teaching models, not range predictions or
+hardware benchmarks.
+
+:::note[Integration status]
+This page lists all four labs. Each is built and reviewed in its own work stream and joins the site when it is
+integrated. A lab marked **integration pending** is not part of this build yet, so its link won't open here.
+Use the lesson's worked examples, which cover the same ideas on paper, until it arrives.
+:::
+
+| Lab | What you do there | Used in | Status in this build |
+|---|---|---|---|
+| [RF sandbox](./rf-sandbox/) | Change spreading factor, bandwidth, coding rate and payload bytes and watch packet airtime; work a link budget with a dB example and an obstruction toggle. | Modules 01, 07, 12 | **Integration pending** |
+| [Routing playground](./routing-playground/) | Step through Meshtastic managed flooding and MeshCore known-path forwarding on the same four-node graph, with every decision explained and cited. | Modules 04, 06, 07, 12 | Available |
+| [Packet inspector](./packet-inspector/) | Inspect synthetic packets field by field, switch between air, client and app views, and diagnose one settings mismatch at a time. | Modules 03, 06, 09, 12 | **Integration pending** |
+| [Field planner](./field-planner/) | Plan nodes, roles and power, estimate battery runtime with stated assumptions, keep a field test log with a blank CSV, and build the capstone report. | Modules 09, 10, 12 | **Integration pending** |
+
+## Known gaps
+
+- The routing playground here covers the four-node diamond: a Meshtastic broadcast and a MeshCore known-path
+  failure with reset and recovery. More presets come with the routing lab's integration.
+- Routing airtime is reported only once it can use the RF sandbox's calculator with stated packet bytes. Until
+  then the playground counts transmissions and leaves airtime out, rather than guessing byte lengths.
+
+## How the labs fit the course
+
+1. **RF sandbox:** how long one packet stays on air and how much margin a link has (Module 01).
+2. **Routing playground:** who forwards each packet, and what happens when a link breaks (Modules 04 and 06).
+3. **Packet inspector:** what each byte means, and which mismatches block a link at which layer (Modules 03, 06, 09).
+4. **Field planner:** turn all of that into a plan, a test log and a capstone report (Modules 09, 10, 12).

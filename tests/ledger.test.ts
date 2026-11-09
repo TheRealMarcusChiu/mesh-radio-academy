@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ID = /\b(?:MT|MC|RF|HW|REG|NTX|LW)-[A-Z0-9]+\b/g;
+const ID = /\b(?:MT|MC|RF|HW|REG|NTX|LW|CUR)-[A-Z0-9]+\b/g;
 const ANCHOR = /<a id="([a-z0-9-]+)"><\/a>([A-Z0-9-]+)/g;
 
 const read = (p: string) => readFileSync(p, 'utf8');
@@ -27,7 +27,7 @@ function defined() {
 test('ledger defines each claim and source ID once, with a matching link anchor', () => {
   const ids = defined();
   assert.ok(ids.size > 80, `only ${ids.size} IDs defined`);
-  for (const must of ['MT-C03', 'MT-S09', 'MC-011', 'MC-S10', 'RF-C07', 'HW-S01', 'REG-C06', 'NTX-C02']) {
+  for (const must of ['MT-C03', 'MT-S09', 'MC-011', 'MC-S10', 'RF-C07', 'HW-S01', 'REG-C06', 'NTX-C02', 'CUR-C01', 'CUR-C27', 'CUR-S01', 'CUR-S11']) {
     assert.ok(ids.has(must), `${must} missing`);
   }
 });
