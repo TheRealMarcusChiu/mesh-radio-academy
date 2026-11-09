@@ -163,6 +163,57 @@ test('operator and MQTT samples are labeled synthetic and avoid destructive comm
   }
 });
 
+// Regressions for the SPEC review of 6dd5a1a (CUR-SPEC01–05).
+const claimRow = (file: string, id: string) =>
+  read(file).split('\n').find((l) => l.includes(`<a id="${id.toLowerCase()}"></a>`)) ?? '';
+
+test('CUR-SPEC01: map-report precision is never taught through the per-channel precision claim', () => {
+  for (const f of [
+    lessonPath('04-meshtastic-under-the-hood'),
+    lessonPath('08-privacy-security-rules'),
+    'src/content/docs/glossary.mdx',
+  ]) {
+    // The sentence a CUR-C14 citation supports must be about channel positions, not map reports.
+    for (const [, sentence] of read(f).matchAll(/([^.]*\.)\s*<Cite ids="[^"]*CUR-C14[^"]*" \/>/g)) {
+      assert.doesNotMatch(sentence, /map.report/i, `${f}: map report tied to channel precision: ${sentence.trim()}`);
+    }
+  }
+  const answer = read(lessonPath('08-privacy-security-rules')).split('## Your turn')[1].split('## Knowledge check')[0];
+  assert.match(answer, /CUR-C27/, 'threat-model answer must cite the map-report precision claim');
+  assert.match(claimRow('research/claims-curriculum.md', 'CUR-C27'), /12.{1,3}15/);
+});
+
+test('CUR-SPEC02: capstone learning airtime equals its counted frames × the CUR-C21 frame time', () => {
+  const capstone = read(lessonPath('12-capstone-operator-reference'));
+  const rows = capstone.split('### 2. Predictions')[1].split('### 3.')[0].split('\n').filter((l) => /^\| [A-Z]/.test(l) && !l.startsWith('| Phase'));
+  const frames = rows.map((r) => Number(r.split('|')[2].trim().split(' ')[0]));
+  assert.deepEqual(frames, [3, 3, 2, 4]);
+  const frameMs = 82.176; // CUR-C21: 40 B at the teaching profile, reproduced below
+  const learn = (frames[0] + frames[1] + frames[2]) * frameMs;
+  assert.equal(capstone.match(/([\d.]+) ms of airtime to learn the paths/)?.[1], learn.toFixed(3));
+  assert.equal(capstone.match(/then ([\d.]+) ms per confirmed message/)?.[1], (frames[3] * frameMs).toFixed(3));
+});
+
+test('CUR-SPEC03: zero-hop advert default is the documented factory-fresh lifecycle, not a contradiction', () => {
+  for (const row of [claimRow('research/claims-curriculum.md', 'CUR-C17'), claimRow('research/sources-curriculum.md', 'CUR-S10')]) {
+    assert.doesNotMatch(row, /inconsistent|unresolved/i, row.slice(0, 60));
+    assert.match(row, /saving any setting/i, row.slice(0, 60));
+  }
+});
+
+test('CUR-SPEC04: first-link identity check compares full public keys, never a short prefix', () => {
+  const l05 = read(lessonPath('05-first-meshcore-link'));
+  assert.match(l05, /full-key comparison: match/);
+  assert.doesNotMatch(l05, /first \d+ hex/i);
+});
+
+test('CUR-SPEC05: glossary defines spreading factor through symbol time, not a chirp count', () => {
+  const sf = read('src/content/docs/glossary.mdx').split('\n\n').find((p) => p.startsWith('**Spreading factor')) ?? '';
+  assert.match(sf, /2\^SF/);
+  assert.doesNotMatch(sf, /chirps encode/);
+  assert.match(sf, /RF-C01/);
+});
+
 test('verified calculations in the fragment reproduce', () => {
   // SX1276 Rev. 4 §4.1.1.7 at the RF-F01 profile: SF7, 125 kHz, CR 4/5, 8-symbol preamble, explicit header, CRC on.
   const airtimeMs = (pl: number, sf = 7, bw = 125_000, cr = 1, pre = 8, ih = 0, crc = 1, de = 0) => {

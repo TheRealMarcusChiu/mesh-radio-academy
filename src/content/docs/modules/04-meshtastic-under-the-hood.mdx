@@ -201,8 +201,9 @@ What this means in practice:
 - **Loops.** A gateway won't re-upload a packet already marked via MQTT, but that guard doesn't prove every
   multi-gateway setup is loop-free. <Cite ids="MT-C23" />
 - **Metadata and content.** Encrypted or decoded upload, JSON output (always unencrypted) and map reports
-  (unencrypted: names, node ID, position at your precision, hardware, firmware, preset, primary channel name) are
-  separate settings. "OK to MQTT" is a polite request, not cryptography. <Cite ids="CUR-C10 MT-C22" />
+  (unencrypted: names, node ID, hardware, firmware, preset, primary channel name, and a position at the map
+  report's own precision if its location switch is on) are separate settings. Map-report precision is not the
+  channel's position precision. "OK to MQTT" is a polite request, not cryptography. <Cite ids="CUR-C10 CUR-C27 MT-C22" />
 - **Congestion.** Downlink turns internet traffic into airtime on your local channel. Every downlinked packet
   occupies the same shared spectrum as local traffic.
 - **Timing.** Exact multi-gateway timing and replay behavior are not established; the course doesn't model them. <Cite ids="MT-C26" />
@@ -276,8 +277,8 @@ via-MQTT flag and your own uplink and downlink settings. <Cite ids="CUR-C11 MT-C
 
 ## References
 
-- Claims used on this page: <Cite ids="MT-C03 MT-C04 MT-C05 MT-C06 MT-C07 MT-C08 MT-C09 MT-C10 MT-C11 MT-C12 MT-C13 MT-C22 MT-C23 MT-C26 MT-F01 CUR-C04 CUR-C05 CUR-C06 CUR-C07 CUR-C08 CUR-C09 CUR-C10 CUR-C11 CUR-C14 CUR-C21" />
-- Sources: <Cite ids="MT-S02 MT-S09 MT-S10 MT-S11 MT-S12 MT-S17 MT-S24 MT-S30 CUR-S01 CUR-S02 CUR-S03 CUR-S06 CUR-S07" />
+- Claims used on this page: <Cite ids="MT-C03 MT-C04 MT-C05 MT-C06 MT-C07 MT-C08 MT-C09 MT-C10 MT-C11 MT-C12 MT-C13 MT-C22 MT-C23 MT-C26 MT-F01 CUR-C04 CUR-C05 CUR-C06 CUR-C07 CUR-C08 CUR-C09 CUR-C10 CUR-C11 CUR-C14 CUR-C21 CUR-C27" />
+- Sources: <Cite ids="MT-S02 MT-S09 MT-S10 MT-S11 MT-S12 MT-S17 MT-S24 MT-S30 CUR-S01 CUR-S02 CUR-S03 CUR-S06 CUR-S07 CUR-S11" />
 - Terms: [glossary](../../glossary/).
 
 ## Next

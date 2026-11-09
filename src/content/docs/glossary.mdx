@@ -103,7 +103,8 @@ receiver sensitivity. A planning number, not a promise. <Cite ids="RF-C07" /> Mo
 **MAC (message authentication code).** A short tag that shows a ciphertext wasn't changed by someone without the key.
 MC uses a 2-byte truncated HMAC. <Cite ids="MC-022" /> Module 08.
 
-**Map report.** An unencrypted MT MQTT message with names, node ID, position, hardware, firmware and settings. <Cite ids="CUR-C10" /> Module 08.
+**Map report.** An unencrypted MT MQTT message with names, node ID, hardware, firmware and settings, plus a position
+when its own location switch is on, at its own map precision (not the channel's). <Cite ids="CUR-C10 CUR-C27" /> Module 08.
 
 **Metadata.** What stays visible around encrypted content: who, to whom, when, size, route. <Cite ids="CUR-C04 MC-028" /> Module 08.
 
@@ -129,7 +130,8 @@ MC uses a 2-byte truncated HMAC. <Cite ids="MC-022" /> Module 08.
 
 **Port number (MT).** Which application a payload belongs to: text 1, position 3, telemetry 67, traceroute 70. <Cite ids="CUR-C06" /> Module 04.
 
-**Position precision.** MT per-channel setting for how precise shared positions are. <Cite ids="CUR-C14" /> Module 08.
+**Position precision.** MT per-channel setting for how precise the position packets on that channel are. MQTT map
+reports have a separate precision setting. <Cite ids="CUR-C14" /> Module 08.
 
 **Protobuf.** The schema format MT uses to encode its messages compactly. Module 04.
 
@@ -159,7 +161,11 @@ cancellation. For coordinated fixed sites. <Cite ids="MT-C05" /> Module 10.
 
 **SNR.** Signal-to-noise ratio, in dB. <Cite ids="RF-C12" /> Module 01.
 
-**Spreading factor (SF).** How many chirps encode a symbol; each step up roughly doubles airtime. <Cite ids="MT-C27" /> Module 01.
+**Spreading factor (SF).** The LoRa setting that fixes how long each symbol lasts: T_symbol = 2^SF / bandwidth.
+At a fixed bandwidth, raising SF by 1 doubles the symbol time. A whole packet's airtime is not exactly doubled,
+because the coding rate and the rounding of payload symbols also count: Module 01's SF7→SF8 example goes from
+56.576 ms to 102.912 ms, about 1.8 times. Higher SF is slower and more
+robust. <Cite ids="RF-C01 RF-C15" /> Module 01.
 
 **Sync word.** A framing value in LoRa packets. Matching frequency and modem settings alone don't establish that one
 radio accepts another's frames; framing must also be compatible. <Cite ids="LW-C04" /> Module 00.

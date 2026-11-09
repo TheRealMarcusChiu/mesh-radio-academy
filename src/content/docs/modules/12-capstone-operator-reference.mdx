@@ -106,7 +106,7 @@ airtime the report uses the course's teaching RF profile and an assumed 40-byte 
 | A sends its returned path directly via B | 2 (A, B) | 164.352 ms | Reciprocal path learning |
 | Each later DM: direct via B, ACK direct back | 4 (A, B, D, B) | 328.704 ms | Stored path; next relay consumes its entry <Cite ids="MC-009" /> |
 
-Prediction: route A→B→D; 821.76 ms of airtime to learn the paths, then 328.704 ms per confirmed message.
+Prediction: route A→B→D; 3 + 3 + 2 = 8 transmissions, so 657.408 ms of airtime to learn the paths, then 328.704 ms per confirmed message (every frame assumed to be the same synthetic 40 bytes).
 
 ### 3. Failure and capture (run 2: B–D broken)
 

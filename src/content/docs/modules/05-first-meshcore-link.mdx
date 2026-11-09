@@ -112,8 +112,8 @@ and optional location.
   an unknown path. <Cite ids="MC-007" />
 
 For a DM, both companions need each other as contacts, from adverts or added manually. A signed advert proves the
-sender holds that key, not that the name is who you think. Compare the public key with your partner in person
-before you trust it. <Cite ids="MC-019" />
+sender holds that key, not that the name is who you think. Compare the **full** public key with your partner in
+person before you trust it. A short prefix is a routing hint that can collide, not proof of identity. <Cite ids="MC-019 MC-015" />
 
 Then send a short DM from A to D. With no known route, A **floods** it. D replies with a returned path bundled
 with an ACK, and A stores that path for next time. <Cite ids="MC-008" /> On a two-node link the "path" is empty:
@@ -142,7 +142,8 @@ Radio       frequency / BW / SF / CR copied from community page, dated 2026-11-0
 Client      MeshCore app 1.50.0 on both phones (About screen)
 Adverts     A zero-hop advert → D lists A as contact: yes
             D zero-hop advert → A lists D as contact: yes
-Key check   first 8 hex characters compared in person: match
+Key check   full public keys read side by side in person; full-key comparison: match
+            (the keys themselves are not written here)
 DM A→D      "test 1"   D shows: yes   A shows ACK: yes
 Channel     private test channel "test 2": D shows: yes
 Not stored  private keys, full public keys, channel key, locations

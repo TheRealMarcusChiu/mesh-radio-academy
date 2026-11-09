@@ -12,7 +12,7 @@ lesson:
   estimatedMinutes: 60
   prerequisites: ['modules/04-meshtastic-under-the-hood', 'modules/06-meshcore-under-the-hood']
   difficulty: intermediate
-  sourceIds: [MT-C13, MT-C14, MT-C17, MT-C18, MT-C19, MT-C20, MT-C21, MT-C22, MT-C25, MT-C26, MC-019, MC-020, MC-021, MC-022, MC-023, MC-024, MC-025, MC-026, MC-028, MC-029, MC-032, REG-C01, REG-C02, REG-C03, REG-C04, REG-C05, REG-C06, HW-C09, CUR-C04, CUR-C10, CUR-C12, CUR-C13, CUR-C14, CUR-C24, CUR-C25]
+  sourceIds: [MT-C13, MT-C14, MT-C17, MT-C18, MT-C19, MT-C20, MT-C21, MT-C22, MT-C25, MT-C26, MC-019, MC-020, MC-021, MC-022, MC-023, MC-024, MC-025, MC-026, MC-028, MC-029, MC-032, REG-C01, REG-C02, REG-C03, REG-C04, REG-C05, REG-C06, HW-C09, CUR-C04, CUR-C10, CUR-C12, CUR-C13, CUR-C14, CUR-C24, CUR-C25, CUR-C27]
   baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; US eCFR Title 47 issue 2026-11-05; advisories listed 2026-11-09'
   reviewed: 2026-11-09
 ---
@@ -117,7 +117,7 @@ reporting on. Here's what each party gets.
 | Listener with a receiver, no key | Kestrel's node number, the destination (broadcast), packet ID, hop fields, channel hash, time and approximate signal; no text | The 16-byte header is clear <Cite ids="CUR-C04" /> |
 | Heron (relay, no key) | The same, and it forwards the packet | Rebroadcast mode `ALL` relays without decrypting <Cite ids="MT-C07" /> |
 | Another channel member | The text, and the ability to send a message that looks like Kestrel's | AES-CTR without an authentication tag <Cite ids="MT-C17" /> |
-| Broker (via Osprey) | The encrypted packet and its header, plus Osprey's map report with its position | Encryption-enabled upload; unencrypted map report <Cite ids="CUR-C10" /> |
+| Broker (via Osprey) | The encrypted packet and its header, plus Osprey's map report (with a position, if its map settings report location, at the map report's own precision) | Encryption-enabled upload; unencrypted map report <Cite ids="CUR-C10 CUR-C27" /> |
 | Osprey's operator | The text, since Osprey holds the key | Key holder |
 
 Change one setting, Osprey's "encryption enabled" to off, and the broker receives the decoded text as well. Every
@@ -148,8 +148,11 @@ Encryption hides the body, not the envelope.
   adverts carry a public key, name and optional location. <Cite ids="MC-028" />
 - **Both:** when you transmit and roughly where from, to anyone with a receiver in range.
 - **Bridges and maps** add retention and new observers. A Meshtastic map report is unencrypted and includes names,
-  node ID, position at your configured precision, hardware, firmware, preset and primary channel name. <Cite ids="CUR-C10 MC-029" />
-  Lowering a channel's position precision limits what positions reveal. <Cite ids="CUR-C14" />
+  node ID, hardware, firmware, preset, primary channel name and, if its map settings report location, a position. <Cite ids="CUR-C10 MC-029" />
+- **Two separate precision controls.** A channel's position precision limits the position packets sent on that
+  channel. <Cite ids="CUR-C14" /> MQTT map reports have their own location switch and their own precision setting
+  (12–15 bits in this firmware; other values fall back to the map default), so lowering channel precision does
+  not change what a map report reveals. Check the map settings separately, or turn map reporting off. <Cite ids="CUR-C27" />
 - A map shows what reached a map. It's not a census, and being absent from one is not privacy. <Cite ids="CUR-C25" />
 
 ## Keys over time: sharing, rotation, loss, revocation
@@ -182,6 +185,7 @@ version numbers between app and firmware prove neither compatibility nor safety.
 - [ ] No channel URL, QR code, key or config export in any photo, chat, issue or repository.
 - [ ] Position sharing off, or precision reduced, on every channel that doesn't need it.
 - [ ] MQTT, JSON and map reporting off unless you chose them and know where the data goes.
+- [ ] If map reporting stays on: its own location switch and map precision checked separately from channel precision.
 - [ ] Node names don't contain your real name, call sign (unless operating as an amateur) or address.
 - [ ] Shared keys are fresh 16- or 32-byte keys, not shorthand defaults, for anything private.
 - [ ] Peer keys verified in person for DMs that matter.
@@ -234,8 +238,9 @@ instruction never to power the radio without its antennas. <Cite ids="HW-C09" />
 ## Your turn: threat-model a neighborhood group
 
 A neighborhood group uses Meshtastic. They have a private channel with a 32-byte key shared at a meeting. One
-member's node is an MQTT gateway with uplink on that channel, encryption enabled, map reporting on, position
-precision at full. Another member lost their phone last week.
+member's node is an MQTT gateway with uplink on that channel and encryption enabled. Two position settings on it
+are separate: the private channel's position precision is at full, and MQTT map reporting is on with location
+reporting enabled at the map-report precision (left at the map default). Another member lost their phone last week.
 
 Write down: (1) who can read the group's messages, (2) what the internet can learn, (3) two changes you'd recommend.
 
@@ -244,11 +249,14 @@ Write down: (1) who can read the group's messages, (2) what the internet can lea
 
 1. Every key holder, including whoever now has the lost phone if it held the key or a channel URL. The broker
    receives encrypted channel packets, so it can't read the text without the key. <Cite ids="MT-C22" />
-2. From the map report: the gateway's name, node ID, precise position, hardware, firmware, preset and primary
-   channel name. From uploaded packets: who sent to whom and when. <Cite ids="CUR-C10 CUR-C04" />
+2. From the map report: the gateway's name, node ID, hardware, firmware, preset and primary channel name, plus its
+   position **at the map-report precision**, not the channel's. Full channel precision doesn't make the map report
+   precise, and lowering it wouldn't make the map report coarser. <Cite ids="CUR-C10 CUR-C27" /> From uploaded
+   packets: who sent to whom and when. <Cite ids="CUR-C04" /> The full-precision channel positions stay encrypted
+   to anyone without the key, but every key holder, including the lost phone, can read them. <Cite ids="CUR-C14" />
 3. Rotate the channel key privately to remaining members (the lost phone is the trigger). <Cite ids="MT-C21" />
-   Turn map reporting off or reduce position precision, and decide as a group whether uplink is needed at all.
-   <Cite ids="CUR-C14" />
+   Turn map reporting off, or at least review its location switch and map precision on their own; separately,
+   lower the channel's position precision; and decide as a group whether uplink is needed at all. <Cite ids="CUR-C27" />
 </details>
 
 ## Knowledge check
@@ -296,8 +304,8 @@ statement, so the course doesn't make one. <Cite ids="MT-C26 MT-C20 MC-023" />
 
 ## References
 
-- Claims used on this page: <Cite ids="MT-C14 MT-C17 MT-C18 MT-C19 MT-C20 MT-C21 MT-C22 MT-C25 MT-C26 MC-019 MC-020 MC-021 MC-022 MC-023 MC-024 MC-025 MC-026 MC-028 MC-029 MC-032 REG-C01 REG-C02 REG-C03 REG-C04 REG-C05 REG-C06 HW-C09 CUR-C04 CUR-C10 CUR-C12 CUR-C13 CUR-C14 CUR-C24 CUR-C25" />
-- Sources: <Cite ids="MT-S03 MT-S21 MT-S22 MT-S23 MT-S24 MT-S25 MT-S26 MT-S27 MT-S28 MT-S29 MC-S17 MC-S18 MC-S19 MC-S20 REG-S01 REG-S02 REG-S03 REG-S04 REG-S05 REG-S06 REG-S07 CUR-S06 CUR-S07 CUR-S08" />
+- Claims used on this page: <Cite ids="MT-C14 MT-C17 MT-C18 MT-C19 MT-C20 MT-C21 MT-C22 MT-C25 MT-C26 MC-019 MC-020 MC-021 MC-022 MC-023 MC-024 MC-025 MC-026 MC-028 MC-029 MC-032 REG-C01 REG-C02 REG-C03 REG-C04 REG-C05 REG-C06 HW-C09 CUR-C04 CUR-C10 CUR-C12 CUR-C13 CUR-C14 CUR-C24 CUR-C25 CUR-C27" />
+- Sources: <Cite ids="MT-S03 MT-S21 MT-S22 MT-S23 MT-S24 MT-S25 MT-S26 MT-S27 MT-S28 MT-S29 MC-S17 MC-S18 MC-S19 MC-S20 REG-S01 REG-S02 REG-S03 REG-S04 REG-S05 REG-S06 REG-S07 CUR-S06 CUR-S07 CUR-S08 CUR-S11" />
 - Terms: [glossary](../../glossary/).
 
 ## Next
