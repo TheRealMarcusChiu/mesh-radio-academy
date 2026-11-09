@@ -3,6 +3,10 @@ import { simulate, deliveryHops, OMITTED_EFFECTS, type SimEvent, type Trace, typ
 import { mtDiamond, mcKnownPath } from '../fixtures/routing.ts';
 import { PRESETS, VIEWBOX, labelY, bothWays, preset, presetScenario, mtDm, mcFirstContact, mcAsymmetric } from '../fixtures/routing-presets.ts';
 import LabCite from './LabCite.astro';
+import { routingAirtime, DEFAULT_RF, HYPOTHETICAL_BYTES, FRAME_KINDS } from '../lib/routing-airtime.ts';
+import { SPREADING_FACTORS, BANDWIDTHS_KHZ, CODING_RATES, PREAMBLE_RANGE, PAYLOAD_RANGE } from '../lib/rf.ts';
+
+const FRAME_LABELS: Record<string, string> = { text: 'Message (DM or broadcast text)', ack: 'ACK', path: 'PATH (MeshCore)', advert: 'Advert (MeshCore)', unknown: 'Unrecognized frame type' };
 
 // Static walkthroughs: the same model, run at build time, readable without JavaScript.
 const SEND: UserAction = { type: 'send' };
@@ -20,6 +24,11 @@ const walkthroughs = [
   walk('MeshCore: one-way link, delivered but unconfirmed', 'Line A–B–D. B can reach D, but D cannot reach B. Nobody has a stored path.', simulate(mcAsymmetric(), [SEND])),
   walk('MeshCore: the mobile node moves', 'Mobile preset. A and D store [b2]. A sends, then the learner moves D next to C, A sends again, resets its path and sends a third time.', simulate(presetScenario('mobile', 'meshcore'), [SEND, moveD, SEND, { type: 'reset-path', node: 'A', dest: 'D' }, SEND])),
 ];
+
+// Static airtime worked example: the Meshtastic DM fallback walkthrough, priced by the accepted RF helper.
+const w = walkthroughs[3];
+const worked = routingAirtime(w.trace.events, { rf: DEFAULT_RF, bytes: HYPOTHETICAL_BYTES });
+const ms = (n: number | null) => (n === null ? 'unavailable' : n.toFixed(3));
 
 const trim = (a: [number, number], b: [number, number], r = 24) => {
   const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
@@ -183,12 +192,66 @@ const LINK_OPTIONS = (a: string, b: string) => [
           <caption>Counts so far</caption>
           <tbody data-metrics></tbody>
         </table>
-        <p class="pg-hint">
-          Airtime is not shown: it needs verified packet byte counts and the RF lab's calculator, which are not
-          integrated into this lab yet.
-        </p>
+        <p class="pg-hint">Airtime for these transmissions is below the graph.</p>
       </div>
     </div>
+
+    <section class="pg-air" aria-labelledby="pg-air-title">
+      <h3 id="pg-air-title">Airtime of the transmissions so far</h3>
+      <p class="pg-hint">
+        Each radio transmission revealed up to the playhead is charged once with the course's LoRa airtime
+        calculator: origin sends, retries, relays and control frames. Receptions, cancelled relays, path resets and
+        moves cost nothing. This is time on air for the packets counted, not wall-clock time, duty-cycle compliance,
+        battery life, collisions or a chip measurement. <LabCite ids={['RF-C01', 'RF-C02', 'RF-C05']} />
+      </p>
+      <div class="pg-controls">
+        <fieldset>
+          <legend>Shared RF settings (all nodes)</legend>
+          <label class="pg-select">Spreading factor
+            <select data-air="sf">{SPREADING_FACTORS.map((v) => <option value={v} selected={v === DEFAULT_RF.sf}>SF{v}</option>)}</select>
+          </label>
+          <label class="pg-select">Bandwidth
+            <select data-air="bandwidthKHz">{BANDWIDTHS_KHZ.map((v) => <option value={v} selected={v === DEFAULT_RF.bandwidthKHz}>{v} kHz</option>)}</select>
+          </label>
+          <label class="pg-select">Coding rate
+            <select data-air="codingRate">{CODING_RATES.map((v) => <option value={v} selected={v === DEFAULT_RF.codingRate}>4/{v + 4}</option>)}</select>
+          </label>
+          <label class="pg-select">Preamble (symbols)
+            <input type="number" inputmode="numeric" min={PREAMBLE_RANGE[0]} max={PREAMBLE_RANGE[1]} step="1" value={DEFAULT_RF.preambleSymbols} data-air="preambleSymbols" />
+          </label>
+          <label><input type="checkbox" data-air="explicitHeader" checked={DEFAULT_RF.explicitHeader} /> Explicit header</label>
+          <label><input type="checkbox" data-air="crc" checked={DEFAULT_RF.crc} /> Payload CRC</label>
+          <p class="pg-hint" data-air-de></p>
+        </fieldset>
+        <fieldset>
+          <legend>Assumed full PHY payload size per frame type</legend>
+          <p class="pg-hint">
+            The whole LoRa payload in bytes, including mesh header and encryption overhead, not the message text.
+            This lab has no verified frame lengths, so the sizes start blank (unknown).
+          </p>
+          {FRAME_KINDS.map((k) => (
+            <label class="pg-select">{FRAME_LABELS[k]}
+              <input type="number" inputmode="numeric" min={PAYLOAD_RANGE[0]} max={PAYLOAD_RANGE[1]} step="1" placeholder="unknown" data-air-bytes={k} />
+            </label>
+          ))}
+          <div class="pg-actions">
+            <button type="button" class="btn" data-air-hypo>Use hypothetical 32-byte frames</button>
+            <button type="button" class="btn" data-air-clear>Clear sizes</button>
+          </div>
+        </fieldset>
+      </div>
+      <p class="pg-air-status" role="status" data-air-status></p>
+      <ul class="pg-air-errors" data-air-errors></ul>
+      <div class="pg-scroll" tabindex="0" role="region" aria-label="Airtime by frame type">
+        <table class="pg-airtable">
+          <caption>By frame type, up to the playhead</caption>
+          <thead>
+            <tr><th scope="col">Frame type</th><th scope="col">Transmissions</th><th scope="col">Size assumed (bytes)</th><th scope="col">Per packet (ms)</th><th scope="col">Subtotal (ms)</th></tr>
+          </thead>
+          <tbody data-air-rows></tbody>
+        </table>
+      </div>
+    </section>
 
     <h3>Event log</h3>
     <p class="pg-hint">Each line is one event: teaching tick, node, what it did and why, with the evidence it rests on.</p>
@@ -216,6 +279,35 @@ const LINK_OPTIONS = (a: string, b: string) => [
   </details>
 
   <details class="pg-walk">
+    <summary>Worked airtime example (no JavaScript needed)</summary>
+    <p>
+      Walkthrough: “{w.title}”. RF settings: SF{DEFAULT_RF.sf}, {DEFAULT_RF.bandwidthKHz} kHz, coding rate
+      4/{DEFAULT_RF.codingRate + 4}, {DEFAULT_RF.preambleSymbols}-symbol preamble (the calculator adds the fixed 4.25
+      symbols itself), explicit header, CRC on, low-data-rate optimization off. These are the RF lesson's worked
+      settings. <LabCite ids={['RF-C01', 'RF-C03']} /> Frame sizes are <strong>hypothetical</strong>: every frame is
+      assumed to be a 32-byte PHY payload. That is a teaching assumption, not a firmware or capture fact.
+    </p>
+    <div class="pg-scroll" tabindex="0" role="region" aria-label="Worked airtime example">
+      <table class="pg-airtable">
+        <caption>{worked.transmissions} transmissions, {worked.retries} of them retries</caption>
+        <thead>
+          <tr><th scope="col">Frame type</th><th scope="col">Transmissions</th><th scope="col">Size assumed (bytes)</th><th scope="col">Per packet (ms)</th><th scope="col">Subtotal (ms)</th></tr>
+        </thead>
+        <tbody>
+          {worked.rows.map((r) => (
+            <tr><th scope="row">{FRAME_LABELS[r.kind]}</th><td>{r.count}</td><td>{r.bytes ?? 'unknown'}</td><td>{ms(r.packetMs)}</td><td>{ms(r.subtotalMs)}</td></tr>
+          ))}
+          <tr><th scope="row">Total</th><td>{worked.transmissions}</td><td></td><td></td><td>{ms(worked.totalMs)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Time on air of these transmissions only: not elapsed time, duty-cycle compliance, battery life, collisions or
+      a measurement. Real frame sizes differ by protocol and frame type. <LabCite ids={['RF-C05']} />
+    </p>
+  </details>
+
+  <details class="pg-walk">
     <summary>What this model leaves out</summary>
     <ul>{OMITTED_EFFECTS.map((o) => <li>{o}</li>)}</ul>
   </details>
@@ -224,6 +316,10 @@ const LINK_OPTIONS = (a: string, b: string) => [
 <script>
   import { createController, deliveryHops, relayOrder, type Controller, type SimEvent, type Metrics, type Link, type ScenarioConfig, type UserAction } from '../lib/routing.ts';
   import { PREFIXES, preset, presetScenario, bothWays, type Preset } from '../fixtures/routing-presets.ts';
+  import { routingAirtime, HYPOTHETICAL_BYTES, FRAME_KINDS, type FrameBytes } from '../lib/routing-airtime.ts';
+  import { requiresLowDataRateOptimize } from '../lib/rf.ts';
+
+  const FRAME_LABEL: Record<string, string> = { text: 'Message (DM or broadcast text)', ack: 'ACK', path: 'PATH (MeshCore)', advert: 'Advert (MeshCore)', unknown: 'Unrecognized frame type' };
 
   const METRIC_LABELS: [keyof Metrics, string][] = [
     ['rfTransmissions', 'Radio transmissions (all)'],
@@ -377,7 +473,63 @@ const LINK_OPTIONS = (a: string, b: string) => [
       return span;
     }
 
+    let hypothetical = false;
+    const airEl = (k: string) => $<HTMLInputElement & HTMLSelectElement>(`[data-air="${k}"]`);
+    const fmtMs = (n: number) => n.toFixed(3);
+
+    /** Airtime overlay: reads the visible events only; never touches the controller. */
+    function renderAir() {
+      const sf = Number(airEl('sf').value);
+      const bandwidthKHz = Number(airEl('bandwidthKHz').value);
+      const de = requiresLowDataRateOptimize(sf, bandwidthKHz);
+      const rf = {
+        sf,
+        bandwidthKHz,
+        codingRate: Number(airEl('codingRate').value),
+        preambleSymbols: airEl('preambleSymbols').value.trim() === '' ? NaN : Number(airEl('preambleSymbols').value),
+        explicitHeader: airEl('explicitHeader').checked,
+        crc: airEl('crc').checked,
+        lowDataRateOptimize: de,
+      };
+      $('[data-air-de]').textContent = `Low-data-rate optimization: ${de ? 'on' : 'off'}, set automatically (symbol time ${fmtMs(2 ** sf / bandwidthKHz)} ms; on above 16 ms).`;
+      const bytes = Object.fromEntries(
+        FRAME_KINDS.map((k) => {
+          const v = $<HTMLInputElement>(`[data-air-bytes="${k}"]`).value.trim();
+          return [k, v === '' ? null : Number(v)];
+        }),
+      ) as FrameBytes;
+      const o = routingAirtime(ctl.visibleEvents(), { rf, bytes });
+      const settings = `SF${sf}, ${bandwidthKHz} kHz, CR 4/${rf.codingRate + 4}, ${airEl('preambleSymbols').value || '?'}-symbol preamble, ${rf.explicitHeader ? 'explicit' : 'implicit'} header, CRC ${rf.crc ? 'on' : 'off'}, DE ${de ? 'on' : 'off'}`;
+      const sizes = hypothetical ? ' Sizes: hypothetical 32-byte frames, not firmware facts.' : '';
+      $('[data-air-status]').textContent =
+        o.status === 'invalid'
+          ? 'Airtime unavailable: fix the inputs listed below.'
+          : o.status === 'partial'
+            ? `Known subtotal ${fmtMs(o.knownMs!)} ms for ${o.transmissions - o.unknownTransmissions} of ${o.transmissions} transmissions. ${o.unknownTransmissions} have no size, so there is no total.${sizes}`
+            : `Total time on air: ${fmtMs(o.totalMs!)} ms for ${o.transmissions} transmissions (${o.retries} retries) at ${settings}.${sizes}`;
+      $('[data-air-errors]').replaceChildren(...o.errors.map((e) => Object.assign(document.createElement('li'), { textContent: `${e.field}: ${e.message}` })));
+      for (const k of ['sf', 'bandwidthKHz', 'codingRate', 'preambleSymbols']) airEl(k).setAttribute('aria-invalid', String(o.errors.some((e) => e.field === k)));
+      for (const k of FRAME_KINDS) $(`[data-air-bytes="${k}"]`).setAttribute('aria-invalid', String(o.errors.some((e) => e.field === `bytes.${k}`)));
+      const cell = (tag: 'th' | 'td', text: string) => Object.assign(document.createElement(tag), { textContent: text }, tag === 'th' ? { scope: 'row' } : {});
+      const show = (n: number | null) => (n === null ? 'unavailable' : fmtMs(n));
+      $('[data-air-rows]').replaceChildren(
+        ...o.rows.map((r) => {
+          const tr = document.createElement('tr');
+          tr.append(cell('th', FRAME_LABEL[r.kind]), cell('td', String(r.count)), cell('td', r.bytes === null ? 'unknown' : String(r.bytes)), cell('td', show(r.packetMs)), cell('td', show(r.subtotalMs)));
+          return tr;
+        }),
+      );
+      if (!o.rows.length) {
+        const tr = document.createElement('tr');
+        const td = cell('td', 'No transmissions yet.');
+        td.colSpan = 5;
+        tr.append(td);
+        $('[data-air-rows]').append(tr);
+      }
+    }
+
     function render() {
+      renderAir();
       const events = ctl.visibleEvents();
       const current = events.at(-1);
       const snap = ctl.snapshot();
@@ -516,6 +668,24 @@ const LINK_OPTIONS = (a: string, b: string) => [
       ctl.reset();
       moveBtn.disabled = false;
       render();
+    });
+
+    for (const el of $$('[data-air]')) el.addEventListener('input', renderAir);
+    for (const el of $$('[data-air-bytes]')) {
+      el.addEventListener('input', () => {
+        hypothetical = false;
+        renderAir();
+      });
+    }
+    $('[data-air-hypo]').addEventListener('click', () => {
+      for (const k of FRAME_KINDS) $<HTMLInputElement>(`[data-air-bytes="${k}"]`).value = String(HYPOTHETICAL_BYTES[k]);
+      hypothetical = true;
+      renderAir();
+    });
+    $('[data-air-clear]').addEventListener('click', () => {
+      for (const el of $$<HTMLInputElement>('[data-air-bytes]')) el.value = '';
+      hypothetical = false;
+      renderAir();
     });
 
     full();
@@ -724,6 +894,48 @@ const LINK_OPTIONS = (a: string, b: string) => [
   }
   .pg-log :global(.cite a) {
     color: inherit;
+  }
+  .pg-air {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding-top: 0.75rem;
+  }
+  .pg-air h3 {
+    font-size: var(--sl-text-lg);
+  }
+  .pg-air-status {
+    font-weight: 600;
+    max-width: 72ch;
+  }
+  .pg-scroll {
+    overflow-x: auto;
+    margin-block: 0.5rem;
+  }
+  .pg-scroll:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+  }
+  .pg-airtable {
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+    min-width: 30rem;
+  }
+  .pg-airtable caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.25rem;
+  }
+  /* Rows are rebuilt in JS without Astro's scope attribute, so reach them with :global. */
+  .pg-air :global(th),
+  .pg-air :global(td),
+  .pg-walk .pg-airtable th,
+  .pg-walk .pg-airtable td {
+    text-align: start;
+    padding: 0.3rem 0.6rem 0.3rem 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    font-variant-numeric: tabular-nums;
+  }
+  .pg-air :global(.pg-air-errors li) {
+    color: var(--sl-color-red-high, var(--sl-color-white));
   }
   .pg-walk {
     margin-top: 1.5rem;

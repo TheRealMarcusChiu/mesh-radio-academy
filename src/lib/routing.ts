@@ -175,7 +175,7 @@ export interface Trace {
 }
 
 export const OMITTED_EFFECTS: readonly string[] = [
-  'Real timing: ticks only order events; relay delays, retry timers and airtime are not modeled.',
+  'Real timing: ticks only order events; relay delays and retry timers are not modeled, and airtime never delays an event (the airtime panel only adds up time on air).',
   'Collisions, capture effect and partial reception: every audible transmission is decoded intact.',
   'Signal strength: links are simply audible or not; SNR-weighted relay timing is replaced by the seeded order.',
   'Regional duty-cycle limits, channel-activity detection and transmit queues.',

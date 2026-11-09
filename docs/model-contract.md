@@ -202,8 +202,12 @@ type UserAction = ...
 
 `two-nodes`, `line`, `diamond`, `mobile` (with a `move` link set), `sparse`, built by `presetScenario(id, protocol, options)` with shared links, seed and roles. Named fixtures: `mtDm(opts)` (A prefers B, B prefers D, A–B off by default: research fallback fixture), `mcFirstContact()` (no contacts, no paths), `mcAsymmetric()` (line with D→B off). `VIEWBOX`, `LABEL_DY` and `labelY` are the drawing constants the layout test checks for every preset.
 
+## Airtime overlay (`src/lib/routing-airtime.ts`; not part of the trace contract)
+
+`routingAirtime(events, { rf, bytes })` prices the given events, normally `controller.visibleEvents()`. It charges every `transmit` event once with the accepted RF helper `src/lib/rf.ts` (RF_MODEL_VERSION 1, a byte-identical copy of `ca280295:src/lib/rf.ts`), grouped by `packet.kind` (`text`, `ack`, `path`, `advert`; anything else is `unknown`). No other event costs airtime. `rf` uses the helper's units and rules (SF 7–12, 125/250/500 kHz, CR 1–4 = 4/5–4/8, preamble 6–65535 symbols, LDRO required above 16 ms symbol time). `bytes` are learner-assumed full PHY payload sizes, 1–255, or `null` for unknown. Status is `complete` (total available), `partial` (some transmissions have unknown or unrecognized sizes: subtotal only, `totalMs: null`) or `invalid` (errors; no total or subtotal). It is pure and never changes the trace, config or metrics. Defaults: RF-F01 settings and all sizes unknown; `HYPOTHETICAL_BYTES` (32 B each) is a labeled teaching assumption.
+
 ## Still not modeled
 
-- Airtime. Needs verified complete packet byte counts and the RF lab's calculator API, neither integrated here.
+- Verified Meshtastic/MeshCore frame lengths per frame type (the airtime overlay therefore takes learner-assumed sizes).
 - Meshtastic next-hop learning, ACK retries, relays cancelling on a heard ACK, MQTT; MeshCore group-channel floods, flood scopes and repeater hop limits, client retry policies, room servers.
 - Collisions, capture, timing, duty-cycle throttles (`OMITTED_EFFECTS`).

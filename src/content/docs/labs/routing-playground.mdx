@@ -103,6 +103,21 @@ would be heard.
   ACK is not the same as the recipient's app showing the message, and neither is a person reading it.
   <Cite ids="MT-C14 MC-030" />
 
-The model computes no airtime. Airtime needs real packet sizes and radio settings; the packet sizes in the
-[packet inspector](../packet-inspector/) aren't complete frames, and the airtime calculator lives in
+## Experiment 7: what the transmissions cost in airtime
+
+- **Setup.** Diamond, Meshtastic, Direct message, the starting state from Experiment 3. In the airtime panel
+  keep the shared RF settings (SF7, 125 kHz, CR 4/5, 8-symbol preamble, explicit header, CRC on) and press
+  **Use hypothetical 32-byte frames**. Those sizes are a teaching assumption, not real Meshtastic frame lengths.
+- **Change one thing.** Step through the DM, then change the spreading factor to 12.
+- **Expect.** Each step that is a radio transmission adds one packet's airtime; receptions, cancelled relays
+  and the retry *decisions* add nothing, but the retransmissions themselves do. At SF12 low-data-rate
+  optimization switches on automatically and the same transmissions take many times longer. Nothing in the
+  trace or the counts changes: the panel only prices what already happened. <Cite ids="RF-C01 RF-C02 RF-C05" />
+- **If you see something else.** Blank sizes mean “unknown”: the panel then shows only a subtotal for the
+  frame types you sized, never a total. A size outside 1–255 bytes, or a preamble outside 6–65535 symbols, shows
+  an error instead of a number.
+
+Airtime here is time on air for the counted packets: not elapsed time, duty-cycle compliance, battery life or a
+measurement. The routing model has no verified frame lengths, so it never guesses sizes from message text or
+from the [packet inspector](../packet-inspector/)'s schematic fields. The calculator itself is explained in
 [Module 01](../../modules/01-rf-foundations/).
