@@ -136,7 +136,15 @@ const sizeText = (s: number | 'rest') => (s === 'rest' ? 'rest' : `${s} B`);
     gap: 0.5rem;
     min-height: 2.75rem;
   }
+  /* Label above the select when the long option text can't fit beside it (320 px). */
+  .pi-select {
+    flex-wrap: wrap;
+    min-width: 0;
+    max-width: 100%;
+  }
   .pi-select select {
+    min-width: 0;
+    max-width: 100%;
     min-height: 2.75rem;
     font: inherit;
     color: var(--sl-color-white);
@@ -155,6 +163,7 @@ const sizeText = (s: number | 'rest') => (s === 'rest' ? 'rest' : `${s} B`);
   }
   .pi-strip {
     display: flex;
+    flex-wrap: wrap;
     gap: 2px;
     margin-block: 0.75rem;
     font-size: var(--sl-text-xs);

@@ -57,7 +57,7 @@ const MC_PAYLOAD = { TXT_MSG: 2, ACK: 3, ADVERT: 4, GRP_TXT: 5, PATH: 8 } as con
 
 /** MeshCore header 0bVVPPPPRR (RT-X04; MC-S08). */
 export function mcHeader(payload: keyof typeof MC_PAYLOAD, route: keyof typeof MC_ROUTE, version = 0): number {
-  if (!(payload in MC_PAYLOAD) || !(route in MC_ROUTE) || !Number.isInteger(version) || version < 0 || version > 3) invalid('unknown MeshCore header part');
+  if (!Object.hasOwn(MC_PAYLOAD, payload) || !Object.hasOwn(MC_ROUTE, route) || !Number.isInteger(version) || version < 0 || version > 3) invalid('unknown MeshCore header part');
   return (version << 6) | (MC_PAYLOAD[payload] << 2) | MC_ROUTE[route];
 }
 

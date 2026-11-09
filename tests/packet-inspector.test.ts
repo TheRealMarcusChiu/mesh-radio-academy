@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { PACKETS, VIEWS, inspect, mcHeader, decodeMcPathLen, mtFlags, type PacketView } from '../src/lib/packet-inspector.ts';
 
 const field = (v: PacketView, name: string) => {
@@ -15,6 +16,25 @@ test('MeshCore header byte follows 0bVVPPPPRR from the pinned packet format', ()
   assert.equal(mcHeader('ADVERT', 'DIRECT'), 0x12);
   assert.equal(mcHeader('GRP_TXT', 'FLOOD'), 0x15);
   assert.throws(() => mcHeader('NOPE' as never, 'FLOOD'), /Invalid/);
+});
+
+test('mcHeader rejects inherited object names in every argument', () => {
+  for (const name of ['toString', 'constructor', '__proto__', 'hasOwnProperty', 'valueOf']) {
+    assert.throws(() => mcHeader(name as never, 'DIRECT'), /Invalid inspector input/, `payload ${name}`);
+    assert.throws(() => mcHeader('TXT_MSG', name as never), /Invalid inspector input/, `route ${name}`);
+  }
+});
+
+// Source guards for Q-PACKET-MOBILE, not browser proof: the 320 px fit is verified by the coordinator.
+test('packet inspector controls and byte strip are allowed to wrap on narrow screens', () => {
+  const src = readFileSync('src/components/PacketInspector.astro', 'utf8');
+  const rule = (sel: string) => src.match(new RegExp(`\\n  ${sel.replace(/[.*]/g, '\\$&')} \\{([^}]*)\\}`))?.[1] ?? '';
+  assert.match(rule('.pi-strip'), /flex-wrap: wrap/);
+  assert.match(rule('.pi-select'), /flex-wrap: wrap/);
+  assert.match(rule('.pi-select'), /min-width: 0/);
+  assert.match(rule('.pi-select select'), /min-width: 0/);
+  assert.match(rule('.pi-select select'), /max-width: 100%/);
+  assert.doesNotMatch(src, /overflow(-x)?: hidden;\s*\}\s*\.pi\b/);
 });
 
 test('MeshCore path_len decodes width and count and rejects reserved or oversize encodings', () => {

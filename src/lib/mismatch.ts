@@ -89,7 +89,7 @@ function run(cfg: ScenarioConfig, actions: UserAction[] = [{ type: 'send' }]): R
   };
 }
 
-/** Routing-layer scenario for a change, or undefined when the change acts at the RF/key layer. */
+/** Routing-layer scenario for a DM or Meshtastic broadcast; MeshCore group posts are never simulated. */
 function routingScenario(protocol: BenchProtocol, traffic: Traffic, change: ChangeId): ScenarioConfig {
   const mtTraffic = traffic === 'dm' ? 'dm' : 'broadcast';
   const line = (links = bothWays([['A', 'B'], ['B', 'D']])) => presetScenario('line', protocol, { links, mtTraffic });
@@ -118,6 +118,7 @@ export function diagnose(input: unknown): Diagnosis {
   const dm = traffic === 'dm';
   const mcChannel = !mt && !dm;
   const done = (stages: StageResult[], senderSees: string, explain: string): Diagnosis => ({ protocol, traffic, change, stages, senderSees, explain });
+  const noAck = r('ack', 'n/a', 'A channel post names a channel, not a recipient, so no end-to-end ACK comes back.', mt ? ['MT-C14'] : ['RT-X07']);
 
   // ---- RF and protocol layer: sourced rules, no routing needed ----
   if (change === 'other-protocol') {
@@ -128,7 +129,7 @@ export function diagnose(input: unknown): Diagnosis {
         r('protocol', 'no', 'Even if the bytes arrived intact, the packet formats differ, so neither firmware can interpret the other natively.', ['LW-C02']),
         NA('decrypt', 'Stops at the protocol stage.'),
         NA('app', 'Stops at the protocol stage.'),
-        r('ack', 'no', 'D never parses the message, so it never sends a native ACK.', ['LW-C02']),
+        dm ? r('ack', 'no', 'D never parses the message, so it never sends a native ACK.', ['LW-C02']) : noAck,
       ],
       dm ? 'A sees no ACK, the same symptom as many other faults.' : 'A has no delivery signal for a channel message at all.',
       'Only the firmware changed. Matching radio settings are not protocol compatibility.',
@@ -143,7 +144,7 @@ export function diagnose(input: unknown): Diagnosis {
         NA('protocol', 'No frame was decoded.'),
         NA('decrypt', 'No frame was decoded.'),
         r('app', 'no', 'Nothing reaches D’s app.', ['LW-C04']),
-        r('ack', dm ? 'no' : 'n/a', dm ? 'Nothing comes back to A.' : 'Channel messages have no end-to-end ACK.', mt ? ['MT-C14'] : ['MC-030']),
+        dm ? r('ack', 'no', 'Nothing comes back to A.', mt ? ['MT-C14'] : ['MC-030']) : noAck,
       ],
       dm ? 'A sees no confirmation and cannot tell an RF mismatch from a routing fault.' : 'A sees nothing unusual: channel posts have no delivery receipt.',
       'Only an RF setting changed; the packet, keys and routing are all fine.',
@@ -155,9 +156,11 @@ export function diagnose(input: unknown): Diagnosis {
         r('signal', 'unknown', 'Renaming the primary channel with automatic slot selection can move D to another frequency slot; whether it does depends on the name hash.', ['MT-C16']),
         r('frame', 'unknown', 'If the slot moved, D is off A’s frequency and cannot decode. If the hash happens to pick the same slot, it can.', ['MT-C16', 'MT-C15']),
         r('protocol', 'unknown', 'Only if the frame decoded.', ['MT-C16']),
-        r('decrypt', 'unknown', 'The renamed primary channel also changes the channel hash D tries, so even on the same slot this channel may not match.', ['MT-C15']),
-        r('app', 'unknown', 'Depends on both effects above.', ['MT-C16']),
-        r('ack', dm ? 'unknown' : 'n/a', dm ? 'Depends on whether D received it.' : 'Channel messages have no end-to-end ACK.', ['MT-C14']),
+        dm
+          ? r('decrypt', 'unknown', 'Only if the frame arrives. This PKI DM is decrypted with keys derived from A’s and D’s identities and carries channel byte 0, so the renamed shared channel adds no further key or hash dependency.', ['MT-C18', 'RT-X10'])
+          : r('decrypt', 'unknown', 'The renamed primary channel also changes the channel hash D tries, so even on the same slot this channel may not match.', ['MT-C15']),
+        r('app', 'unknown', dm ? 'Depends on the slot alone.' : 'Depends on both effects above.', ['MT-C16']),
+        dm ? r('ack', 'unknown', 'Depends on whether D received it.', ['MT-C14']) : noAck,
       ],
       'A cannot see D’s frequency; it only notices that D seems to have gone quiet.',
       'A logical-channel name looks like an app setting, but with automatic slots it can retune the radio.',
@@ -185,28 +188,50 @@ export function diagnose(input: unknown): Diagnosis {
         r('protocol', 'yes', mt ? 'The 16-byte header is in the clear, so D parses it; the one-byte channel hash no longer matches its key.' : 'The header and channel hash are in the clear; D parses the packet.', mt ? ['RT-X02', 'MT-C15'] : ['RT-X04', 'RT-X07']),
         r('decrypt', 'no', mt ? 'Same channel name, wrong PSK: D cannot decrypt. With rebroadcast ALL it may still relay what it cannot read.' : 'Only holders of the channel key can read or write channel posts.', mt ? ['MT-C15', 'MT-C17', 'MT-C07'] : ['MC-020']),
         r('app', 'no', 'Nothing readable reaches D’s app.', mt ? ['MT-C15'] : ['MC-020']),
-        NA('ack', 'Channel messages have no end-to-end ACK.'),
+        noAck,
       ],
       'A sees nothing unusual: channel posts have no delivery receipt.',
       'Heard and parsed is not readable. A matching channel name does not mean a matching key.',
     );
   }
 
-  // ---- routing layer: run the model ----
-  if (mcChannel && (change === 'stale-path' || change === 'no-e2e')) {
+  // ---- MeshCore group posts: labeled inference, not a simulation ----
+  if (mcChannel) {
+    const GROUP_EXPLAIN: Record<string, string> = {
+      baseline: 'Nothing changed, but this bench’s routing model covers addressed DMs only, so a group post’s reach is not simulated.',
+      'missing-repeater': 'A and D are out of earshot without B, whatever the packet type.',
+      'stale-path': 'A group post carries a channel hash, not a destination, so no stored DM path is involved; its reach is still not simulated here.',
+      'no-e2e': 'The forward direction still works, and a group post has no end-to-end ACK to lose; its reach is still not simulated here.',
+    };
+    if (change === 'missing-repeater') {
+      return done(
+        [
+          r('signal', 'no', 'With B off there is no audible path from A to D in this graph, whatever the packet type.', ['RT-X08']),
+          NA('frame', 'Nothing arrived.'),
+          NA('protocol', 'Nothing arrived.'),
+          NA('decrypt', 'Nothing arrived.'),
+          r('app', 'no', 'Nothing reaches D’s app.', ['RT-X08']),
+          noAck,
+        ],
+        'A has no delivery signal for a channel message.',
+        GROUP_EXPLAIN[change],
+      );
+    }
     return done(
       [
-        r('signal', 'yes', 'A group post floods; there is no stored path to go stale and no end-to-end ACK to lose.', ['MC-008']),
-        r('frame', 'yes', NOT_GUARANTEED, ['LW-C04', 'RF-C12']),
-        r('protocol', 'yes', 'Same protocol.', ['LW-C02']),
-        r('decrypt', 'yes', 'D holds the channel key.', ['MC-020']),
-        r('app', 'unknown', 'This lab’s routing model does not simulate MeshCore group floods, so it does not predict this case.', ['MC-020']),
-        NA('ack', 'Group posts have no end-to-end ACK.'),
+        r('signal', 'unknown', 'Reaching D needs B to repeat the group post, and repeater forwarding depends on its flag and flood policy. This lab does not simulate MeshCore group floods.', ['MC-005', 'RT-X08']),
+        r('frame', 'unknown', 'Only if a copy arrives; matching settings would make decoding possible, not guaranteed.', ['LW-C04', 'RF-C12']),
+        r('protocol', 'unknown', 'Only if a copy arrives; the header and channel hash are in the clear.', ['RT-X04', 'RT-X07']),
+        r('decrypt', 'unknown', 'D holds the same channel key, so a copy that arrives would be readable; whether one arrives is not established here.', ['MC-020']),
+        r('app', 'unknown', 'Not predicted: group-post reach is not simulated.', ['MC-020', 'MC-005']),
+        noAck,
       ],
       'A has no delivery signal for a channel message.',
-      'This change is about stored paths and ACKs, which group posts do not use.',
+      GROUP_EXPLAIN[change],
     );
   }
+
+  // ---- routing layer: run the model ----
   const x = run(routingScenario(protocol, traffic, change));
   const heard = x.heardAtD;
   const stages: StageResult[] = heard
@@ -214,11 +239,11 @@ export function diagnose(input: unknown): Diagnosis {
         r('signal', 'yes', 'D hears at least one copy in the simulated graph.', ['RT-X08']),
         r('frame', 'yes', NOT_GUARANTEED, ['LW-C04', 'RF-C12']),
         r('protocol', 'yes', 'Same protocol on both ends.', ['LW-C02']),
-        r('decrypt', x.noContactAtD ? 'no' : 'yes', x.noContactAtD ? 'D has no contact for A.' : 'Keys match in this scenario.', mt ? ['MT-C18'] : ['MC-019']),
+        r('decrypt', x.noContactAtD ? 'no' : 'yes', x.noContactAtD ? 'D has no contact for A.' : 'Keys match in this scenario.', mt ? [dm ? 'MT-C18' : 'MT-C15'] : ['MC-019']),
         r('app', x.deliveredAtD ? 'yes' : 'no', x.deliveredAtD ? 'The simulation delivers it to D’s app.' : 'The simulation never delivers it to D’s app.', mt ? ['MT-C03'] : ['MC-030']),
         dm
           ? r('ack', x.acked ? 'yes' : 'no', x.acked ? 'A matches D’s ACK: protocol receipt, not a human reading it.' : 'No ACK from D reaches A.', mt ? ['MT-C14'] : ['MC-030'])
-          : NA('ack', 'Channel messages have no end-to-end ACK.'),
+          : noAck,
       ]
     : [
         r('signal', 'no', 'No copy reaches D in the simulated graph.', ['RT-X08']),
@@ -226,7 +251,7 @@ export function diagnose(input: unknown): Diagnosis {
         NA('protocol', 'Nothing arrived.'),
         NA('decrypt', 'Nothing arrived.'),
         r('app', 'no', 'Nothing reaches D’s app.', mt ? ['MT-C03'] : ['MC-030']),
-        dm ? r('ack', 'no', 'Nothing comes back to A.', mt ? ['MT-C11'] : ['MC-030']) : NA('ack', 'Channel messages have no end-to-end ACK.'),
+        dm ? r('ack', 'no', 'Nothing comes back to A.', mt ? ['MT-C11'] : ['MC-030']) : noAck,
       ];
   let senderSees: string;
   if (!dm) senderSees = 'A sees nothing unusual: channel posts have no delivery receipt.';

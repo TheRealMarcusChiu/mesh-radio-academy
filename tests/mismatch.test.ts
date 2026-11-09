@@ -83,6 +83,46 @@ test('missing repeater: D never hears anything, so later stages do not apply', (
   assert.equal(outcomes(d), 'no,n/a,n/a,n/a,no,no');
 });
 
+test('MeshCore channel cases never run the DM engine or cite peer-DM key/ACK evidence', () => {
+  for (const c of CHANGES) {
+    const d = diagnose({ protocol: 'meshcore', traffic: 'channel', change: c.id });
+    for (const s of d.stages) {
+      assert.ok(!s.claims.includes('MC-019') && !s.claims.includes('MC-030') && !s.claims.includes('MC-008'), `${c.id} ${s.stage} cites DM evidence`);
+      assert.doesNotMatch(s.why, /simulation delivers/i, `${c.id} ${s.stage}`);
+    }
+    assert.equal(at(d, 'ack'), 'n/a', c.id);
+  }
+});
+
+test('MeshCore channel baseline: group-flood reach is not established, the key condition is, nothing is simulated', () => {
+  const d = diagnose({ protocol: 'meshcore', traffic: 'channel', change: 'baseline' });
+  assert.equal(outcomes(d), 'unknown,unknown,unknown,unknown,unknown,n/a');
+  assert.ok(d.stages[0].claims.includes('MC-005'));
+  assert.match(d.stages[0].why, /does not simulate MeshCore group/i);
+  assert.ok(d.stages[3].claims.includes('MC-020'));
+  assert.match(d.stages[3].why, /channel key/);
+  assert.match(d.explain, /not simulated/i);
+});
+
+test('MeshCore channel missing repeater: D hears nothing because of the graph alone', () => {
+  const d = diagnose({ protocol: 'meshcore', traffic: 'channel', change: 'missing-repeater' });
+  assert.equal(outcomes(d), 'no,n/a,n/a,n/a,no,n/a');
+  assert.ok(d.stages[0].claims.includes('RT-X08'));
+  assert.match(d.stages[0].why, /no audible path/i);
+  assert.match(d.explain, /out of earshot/);
+});
+
+test('Meshtastic primary-channel rename: a PKI DM depends on the slot, not on the renamed channel hash', () => {
+  const dm = diagnose({ protocol: 'meshtastic', traffic: 'dm', change: 'rf-frequency' });
+  const dec = dm.stages.find((s) => s.stage === 'decrypt')!;
+  assert.equal(dec.outcome, 'unknown');
+  assert.doesNotMatch(dec.why, /channel hash D tries/);
+  assert.match(dec.why, /peer keys|identities/);
+  assert.ok(dec.claims.includes('MT-C18') && dec.claims.includes('RT-X10'));
+  const ch = diagnose({ protocol: 'meshtastic', traffic: 'channel', change: 'rf-frequency' });
+  assert.match(ch.stages.find((s) => s.stage === 'decrypt')!.why, /channel hash D tries/);
+});
+
 test('diagnose validates its input', () => {
   for (const bad of [null, {}, { protocol: 'lorawan', traffic: 'dm', change: 'baseline' }, { protocol: 'meshcore', traffic: 'voice', change: 'baseline' }, { protocol: 'meshcore', traffic: 'dm', change: 'two-things' }]) {
     assert.throws(() => diagnose(bad), /Invalid bench input/, JSON.stringify(bad));
