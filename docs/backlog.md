@@ -14,5 +14,5 @@ These are known gaps and accepted limitations, each with an owner and the trigge
 | Routing: topology presets (two nodes, line, diamond, mobile, sparse). | Routing/labs lane | Next routing increment. |
 | Packet inspector and settings-mismatch bench. | Inspector lane | After the packet layouts are pinned (MC-017, MT-S04). |
 | RF sandbox extensions: SF5/6, 62.5 kHz and other chips' formulas (e.g. SX1262/LR1110), and an optional free-space distance estimate. The SF7–12 / 125–500 kHz calculator is done (`src/lib/rf.ts`). | RF lane | Each extension needs its own primary formula source and benchmark before it is enabled. |
-| Field planner, battery estimate, CSV log, capstone export. | Field-workbench lane | Uses RF-C08; 17/20 = 85% PDR sample. |
+| Field lab follow-ups: report import, device-specific measured current profiles, and a link from Module 12 once the curriculum lane publishes it. The planner, battery model, log, CSV and capstone are done (`src/lib/field.ts`). | Field lab owner / integrator | Import only if requested, with full validation before replacing anything. Device profiles only with manufacturer measurements and conditions. Module 12 link at serial integration. |
 | Modules 03–12, glossary, comparison page, lab index, appendices. | Content lane | After this slice's interfaces pass review. |

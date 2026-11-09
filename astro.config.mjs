@@ -34,7 +34,7 @@ export default defineConfig({
             { slug: 'curriculum', label: 'Full course outline' },
           ],
         },
-        { label: 'Labs', items: ['labs/rf-sandbox', 'labs/routing-playground'] },
+        { label: 'Labs', items: ['labs/rf-sandbox', 'labs/routing-playground', 'labs/field-planner'] },
         {
           label: 'Reference',
           items: ['reference/baselines', 'reference/claims', 'reference/sources', 'reference/corrections'],

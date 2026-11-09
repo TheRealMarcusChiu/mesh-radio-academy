@@ -1,0 +1,995 @@
+---
+import {
+  batteryRuntime,
+  sensitivity,
+  compareDirections,
+  formatPdr,
+  describePlanner,
+  suggestPath,
+  channelShare,
+  CAPSTONE_TEXT,
+  PRIVACY_CHECKS,
+  LOG_HEADERS,
+} from '../lib/field.ts';
+import { FIELD_F01_BATTERY, FIELD_BATTERY_CORE, FIELD_F02_TRAFFIC, SAMPLE_LOG, SAMPLE_PLANNER, WORKED_CAPSTONE } from '../fixtures/field.ts';
+import { airtime } from '../lib/rf.ts';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const f01 = batteryRuntime(FIELD_F01_BATTERY);
+const sens = sensitivity(FIELD_BATTERY_CORE, FIELD_F02_TRAFFIC);
+const cmp = compareDirections(SAMPLE_LOG);
+const samplePath = suggestPath(SAMPLE_PLANNER, 'A', 'D');
+const packetMs = airtime(FIELD_F02_TRAFFIC.airtime).packetMs;
+const share = channelShare(packetMs, 30);
+const h1 = (n: number) => n.toFixed(1);
+
+// Node positions in the schematic, by node count (original layout, no map or coordinates).
+const LAYOUT: Record<number, [number, number][]> = {
+  3: [[70, 150], [220, 60], [370, 150]],
+  4: [[70, 140], [220, 50], [220, 230], [370, 140]],
+  5: [[60, 140], [190, 50], [190, 230], [330, 140], [400, 240]],
+};
+const pos = LAYOUT[SAMPLE_PLANNER.nodes.length];
+const at = (id: string) => pos[SAMPLE_PLANNER.nodes.findIndex((n) => n.id === id)];
+
+const RUBRIC: [string, number, string][] = [
+  ['Topology sketch with labelled assumptions', 2, 'Every node, role and link assumption is stated; nothing is presented as measured coverage.'],
+  ['Predicted path and reasoning', 2, 'States the expected route and what would make it change.'],
+  ['Results labelled simulated or measured, with sample sizes', 3, 'Each percentage shows n; on-air attempts are kept separate from deliveries.'],
+  ['Fixed, stated test conditions', 2, 'Endpoints, RF settings, schedule and timing are written down and held constant.'],
+  ['One failure, described with evidence', 2, 'Which observation shows the failure, and what it does not prove.'],
+  ['One controlled adjustment', 3, 'Exactly one variable changed; everything else held fixed.'],
+  ['Retest compared fairly', 2, 'Same schedule and sample size; no claim stronger than the sample supports.'],
+  ['Privacy and compliance check', 2, 'No coordinates, keys or exports; rules and community coordination checked.'],
+  ['Maintenance plan', 2, 'Who checks what, how often, and what triggers a retest.'],
+];
+---
+
+<section class="fw not-content" data-fw aria-labelledby="fw-title">
+  <h2 id="fw-title">Field workbench</h2>
+  <p class="fw-note">
+    Everything stays in this browser: nothing is uploaded, no location is read, and there are no maps or
+    third-party services. Default numbers are <strong>synthetic teaching values</strong>, not measurements
+    of any device, battery, range or delivery.
+  </p>
+
+  <h3>Downloads</h3>
+  <ul>
+    <li><a href={`${base}downloads/field-log-blank.csv`} download>Blank field-log CSV</a> (header row only: {LOG_HEADERS.join(', ')})</li>
+    <li><a href={`${base}downloads/field-log-sample.csv`} download>Synthetic sample field log CSV</a> (the three rows shown below; fictional places, invented counts)</li>
+  </ul>
+
+  <h3>Worked example: Cedar Hollow (fictional)</h3>
+  <figure class="fw-figure">
+    <svg viewBox="0 0 460 290" class="fw-schematic" role="img" aria-labelledby="fw-sample-title">
+      <title id="fw-sample-title">Sample plan: {SAMPLE_PLANNER.nodes.length} nodes; full description in the list below.</title>
+      {SAMPLE_PLANNER.links.map((l) => {
+        const [x1, y1] = at(l.a);
+        const [x2, y2] = at(l.b);
+        return <line x1={x1} y1={y1} x2={x2} y2={y2} class={`ln ln-${l.assumption.replace(' ', '-')}`} />;
+      })}
+      {SAMPLE_PLANNER.nodes.map((n, i) => (
+        <g>
+          <circle cx={pos[i][0]} cy={pos[i][1]} r="20" class={`nd nd-${n.role.replace(/ /g, '-')}`} />
+          <text x={pos[i][0]} y={pos[i][1] + 6} text-anchor="middle" class="nd-id">{n.id}</text>
+          <text x={pos[i][0]} y={pos[i][1] + 36} text-anchor="middle" class="nd-role">{n.role}</text>
+        </g>
+      ))}
+    </svg>
+    <figcaption>Line styles: solid = assumed clear, long dashes = partly obstructed, dots = obstructed, dash-dot = unknown.</figcaption>
+  </figure>
+  <ul class="fw-desc">{describePlanner(SAMPLE_PLANNER).map((l) => <li>{l}</li>)}</ul>
+  <p>Suggested path A → D by fewest assumed-usable links: <strong>{samplePath?.join(' → ')}</strong>. This is a planning aid, not how either firmware routes.</p>
+
+  <div class="fw-scroll" role="region" tabindex="0" aria-label="Battery worked example, scrolls sideways on narrow screens">
+    <table class="fw-table">
+      <caption>Battery runtime, synthetic inputs (FLD-F01, FLD-F02)</caption>
+      <thead><tr><th scope="col">Case</th><th scope="col">Average current</th><th scope="col">Runtime</th></tr></thead>
+      <tbody>
+        <tr><th scope="row">Fixed duty: 1% transmit at 120 mA, 98% listen at 15 mA, 1% sleep at 0.1 mA; 2000 mAh, 3.7 V, 80% usable, 90% efficient</th><td>{f01.averageCurrentMa.toFixed(3)} mA</td><td>{h1(f01.runtimeHours)} h ({f01.runtimeDays.toFixed(2)} days)</td></tr>
+        {sens.map((s) => (
+          <tr><th scope="row">{s.label}; 60 Lab A packets/h of {packetMs.toFixed(3)} ms</th><td>{s.averageCurrentMa.toFixed(3)} mA</td><td>{h1(s.runtimeHours)} h</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+
+  <div class="fw-scroll" role="region" tabindex="0" aria-label="Sample field log, scrolls sideways on narrow screens">
+    <table class="fw-table">
+      <caption>Synthetic field log (blank cells are missing values, not zero)</caption>
+      <thead><tr><th scope="col">Test</th><th scope="col">Direction</th><th scope="col">Sent</th><th scope="col">Unique received</th><th scope="col">On-air attempts</th><th scope="col">RSSI dBm</th><th scope="col">SNR dB</th><th scope="col">Route</th><th scope="col">Notes</th></tr></thead>
+      <tbody>
+        {SAMPLE_LOG.map((r) => (
+          <tr><th scope="row">{r.testId}</th><td>{r.direction}</td><td>{r.sendCount ?? ''}</td><td>{r.receiveCount ?? ''}</td><td>{r.attempts ?? ''}</td><td>{r.rssiDbm ?? ''}</td><td>{r.snrDb ?? ''}</td><td>{r.routeObservation}</td><td>{r.notes}</td></tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+  <ul>
+    <li>Forward: {formatPdr(cmp.forward)}.</li>
+    <li>Reverse: {formatPdr(cmp.reverse)}; left out: {cmp.reverse.excluded.join(', ')} (receive count missing).</li>
+  </ul>
+
+  <details class="fw-details" open>
+    <summary>Worked capstone solution (synthetic)</summary>
+    <dl class="fw-dl">
+      <dt>Results kind</dt><dd>{WORKED_CAPSTONE.resultsKind}</dd>
+      {CAPSTONE_TEXT.map(([k, label]) => (<><dt>{label}</dt><dd>{WORKED_CAPSTONE[k] as string}</dd></>))}
+    </dl>
+  </details>
+
+  <div class="fw-scroll" role="region" tabindex="0" aria-label="Rubric, scrolls sideways on narrow screens">
+    <table class="fw-table">
+      <caption>Rubric (20 points): full points when the evidence is there, half when partly, none when missing</caption>
+      <thead><tr><th scope="col">Criterion</th><th scope="col">Points</th><th scope="col">Full points when</th></tr></thead>
+      <tbody>{RUBRIC.map(([c, p, d]) => <tr><th scope="row">{c}</th><td>{p}</td><td>{d}</td></tr>)}</tbody>
+    </table>
+  </div>
+
+  <h3 id="fw-checklist">Field checklist</h3>
+  <ol class="fw-check">
+    <li>Confirm the board, band and antenna match; attach the antenna before power.</li>
+    <li>Check the device's authorization and the local rules; confirm the community's current settings.</li>
+    <li>Write down firmware, board, modem settings, roles and antennas before the first message.</li>
+    <li>Fix the endpoints and RF settings. Plan one short run, for example 20 messages one every 30 s.</li>
+    <li>Change only one thing between runs; record it.</li>
+    <li>Count each scheduled message once at the receiver; record retries as on-air attempts, separately.</li>
+    <li>Leave unknown readings blank. Never type 0 for "not measured".</li>
+    <li>Use place labels, not coordinates. Don't record keys, QR codes or exports.</li>
+    <li>Stop if anything gets hot, wet or unsafe; no roof or mast work during storms.</li>
+  </ol>
+  <p class="fw-note">
+    Optional hardware extension: at SF7 / 125 kHz a 20-byte packet is on air for {packetMs.toFixed(3)} ms, so one
+    message every 30 s occupies about {(share * 100).toFixed(2)}% of the channel from that sender (FLD-C05).
+    Relays and replies add more. Start with a short run, keep everything fixed and vary one factor per repeat.
+    Your measured results replace these synthetic ones only if you actually take them.
+  </p>
+
+  <noscript><p class="fw-note">The interactive planner, calculator, log and report need JavaScript. Everything above, including the downloads, rubric and checklist, works without it.</p></noscript>
+
+  <div class="fw-ui" data-ui hidden>
+    <div class="fw-status" role="status" data-store-status></div>
+    <div class="fw-noprint fw-row">
+      <button type="button" class="btn" data-discard hidden>Discard the unreadable saved draft</button>
+      <button type="button" class="btn" data-reset>Reset the whole workbench</button>
+    </div>
+
+    <section class="fw-panel" aria-labelledby="fw-plan-h">
+      <h3 id="fw-plan-h">1. Plan your network</h3>
+      <div class="fw-noprint">
+        <label class="fw-inline" for="fw-count">Number of nodes
+          <select id="fw-count" data-count><option>3</option><option>4</option><option selected>5</option></select>
+        </label>
+        <div data-nodes></div>
+        <h4>Links between nodes</h4>
+        <p class="fw-hint">Pick an assumption for each pair that could hear each other, or leave it as no link.</p>
+        <div class="fw-scroll" role="region" tabindex="0" aria-label="Link assumptions table, scrolls sideways on narrow screens">
+          <table class="fw-table"><thead><tr><th scope="col">Pair</th><th scope="col">Assumption</th><th scope="col">Note</th></tr></thead><tbody data-links></tbody></table>
+        </div>
+        <ul class="fw-errors" data-plan-errors aria-live="polite"></ul>
+      </div>
+      <svg viewBox="0 0 460 290" class="fw-schematic" role="img" aria-labelledby="fw-live-title" data-schematic>
+        <title id="fw-live-title" data-schematic-title>Your plan</title>
+      </svg>
+      <ul class="fw-desc" data-plan-desc></ul>
+      <p data-path></p>
+    </section>
+
+    <section class="fw-panel" aria-labelledby="fw-bat-h">
+      <h3 id="fw-bat-h">2. Battery runtime (synthetic until you enter your own values)</h3>
+      <form class="fw-grid fw-noprint" data-battery novalidate>
+        {[
+          ['capacityMah', 'Battery capacity (mAh)'],
+          ['batteryVoltage', 'Battery nominal voltage (V)'],
+          ['usablePct', 'Usable capacity (%)'],
+          ['coldPct', 'Cold derating, your assumption (% of usable lost)'],
+          ['efficiencyPct', 'Converter efficiency (%)'],
+          ['loadVoltage', 'Voltage where currents are measured (V)'],
+          ['txCurrentMa', 'Transmit current (mA)'],
+          ['rxCurrentMa', 'Listening current (mA)'],
+          ['sleepCurrentMa', 'Sleep current (mA)'],
+          ['gpsCurrentMa', 'GPS current (mA)'],
+          ['gpsPct', 'Time GPS is on (%)'],
+          ['packetsPerHour', 'Packets this node transmits per hour (own + relayed)'],
+          ['listeningPct', 'Share of non-transmit time spent listening (%)'],
+          ['payloadBytes', 'Physical bytes per packet (1–255)'],
+          ['preambleSymbols', 'Preamble symbols (6–65535)'],
+        ].map(([k, label]) => (
+          <div class="fw-field">
+            <label for={`fw-in-${k}`}>{label}</label>
+            <input id={`fw-in-${k}`} name={k} type="text" inputmode="decimal" aria-describedby={`fw-in-${k}-error`} />
+            <p class="fw-error" id={`fw-in-${k}-error`} hidden></p>
+          </div>
+        ))}
+        <div class="fw-field">
+          <label for="fw-in-sf">Spreading factor</label>
+          <select id="fw-in-sf" name="sf" aria-describedby="fw-in-airtime-error">{[7, 8, 9, 10, 11, 12].map((s) => <option value={s}>SF{s}</option>)}</select>
+        </div>
+        <div class="fw-field">
+          <label for="fw-in-bandwidthKHz">Bandwidth</label>
+          <select id="fw-in-bandwidthKHz" name="bandwidthKHz" aria-describedby="fw-in-airtime-error">{[125, 250, 500].map((b) => <option value={b}>{b} kHz</option>)}</select>
+        </div>
+        <div class="fw-field">
+          <label for="fw-in-codingRate">Coding rate</label>
+          <select id="fw-in-codingRate" name="codingRate" aria-describedby="fw-in-airtime-error">{[1, 2, 3, 4].map((c) => <option value={c}>4/{c + 4}</option>)}</select>
+        </div>
+        <div class="fw-field fw-check">
+          <input id="fw-in-explicitHeader" name="explicitHeader" type="checkbox" />
+          <label for="fw-in-explicitHeader">Explicit header</label>
+        </div>
+        <div class="fw-field fw-check">
+          <input id="fw-in-crc" name="crc" type="checkbox" />
+          <label for="fw-in-crc">CRC on</label>
+        </div>
+        <p class="fw-error" id="fw-in-airtime-error" hidden></p>
+      </form>
+      <p class="fw-hint">Airtime comes from the <a href={`${base}labs/rf-sandbox/`}>RF sandbox</a> formula; low-data-rate optimization follows its 16 ms rule automatically. Bytes are physical-layer bytes, not text characters.</p>
+      <dl class="fw-dl" data-battery-out></dl>
+      <div class="fw-scroll" role="region" tabindex="0" aria-label="Sensitivity table, scrolls sideways on narrow screens">
+        <table class="fw-table"><caption>Change one assumption at a time</caption><thead><tr><th scope="col">Case</th><th scope="col">Average current</th><th scope="col">Runtime</th></tr></thead><tbody data-sens></tbody></table>
+      </div>
+    </section>
+
+    <section class="fw-panel" aria-labelledby="fw-log-h">
+      <h3 id="fw-log-h">3. Field log</h3>
+      <form class="fw-grid fw-noprint" data-logform novalidate>
+        <div class="fw-field">
+          <label for="fw-log-direction">Direction</label>
+          <select id="fw-log-direction" name="direction" aria-describedby="fw-log-direction-error"><option value="">(not set)</option><option value="forward">forward</option><option value="reverse">reverse</option></select>
+          <p class="fw-error" id="fw-log-direction-error" hidden></p>
+        </div>
+        {[
+          ['testId', 'Test ID'], ['time', 'Time'], ['firmware', 'Firmware'], ['board', 'Board'], ['modemSettings', 'Modem settings'],
+          ['role', 'Role'], ['antenna', 'Antenna'], ['location', 'Distance or fictional location label'], ['obstruction', 'Obstruction'],
+          ['sendCount', 'Messages scheduled (sent)'], ['receiveCount', 'Unique messages received'], ['attempts', 'On-air attempts incl. retries'],
+          ['rssiDbm', 'RSSI (dBm)'], ['snrDb', 'SNR (dB)'], ['latencyMs', 'Latency (ms)'], ['routeObservation', 'Route observed'], ['notes', 'Notes'],
+        ].map(([k, label]) => (
+          <div class="fw-field">
+            <label for={`fw-log-${k}`}>{label}</label>
+            <input id={`fw-log-${k}`} name={k} type="text" aria-describedby={`fw-log-${k}-error`} />
+            <p class="fw-error" id={`fw-log-${k}-error`} hidden></p>
+          </div>
+        ))}
+        <div class="fw-row">
+          <button type="submit" class="btn btn-primary" data-log-save>Add row</button>
+          <button type="button" class="btn" data-log-cancel hidden>Cancel editing</button>
+          <button type="button" class="btn" data-log-sample>Add the synthetic sample rows</button>
+          <button type="button" class="btn" data-log-download>Download my log (CSV)</button>
+        </div>
+      </form>
+      <p class="fw-hint">Leave anything you didn't measure blank; it stays blank and is flagged. Counts are whole numbers; received can't exceed sent.</p>
+      <div class="fw-scroll" role="region" tabindex="0" aria-label="Your field log, scrolls sideways on narrow screens">
+        <table class="fw-table"><caption>Your rows</caption><thead><tr><th scope="col">Test</th><th scope="col">Direction</th><th scope="col">Sent</th><th scope="col">Received</th><th scope="col">Attempts</th><th scope="col">Missing</th><th scope="col" class="fw-noprint">Actions</th></tr></thead><tbody data-log-rows></tbody></table>
+      </div>
+      <ul data-log-compare></ul>
+      <p class="fw-hint">A percentage from 20 messages is one small sample. It can show a direction to investigate; it doesn't establish reliability, and no confidence interval is claimed.</p>
+    </section>
+
+    <section class="fw-panel" aria-labelledby="fw-cap-h">
+      <h3 id="fw-cap-h">4. Capstone report</h3>
+      <form class="fw-noprint" data-capform novalidate>
+        <button type="button" class="btn" data-cap-fill-topology>Copy my plan into the topology sketch</button>
+        <fieldset class="fw-fieldset" aria-describedby="fw-cap-resultsKind-error">
+          <legend>Are your results simulated or measured?</legend>
+          <label class="fw-inline"><input type="radio" name="resultsKind" value="simulated" id="fw-cap-resultsKind" /> Simulated (hardware-free path)</label>
+          <label class="fw-inline"><input type="radio" name="resultsKind" value="measured" /> Measured with my own radios</label>
+          <p class="fw-error" id="fw-cap-resultsKind-error" hidden></p>
+        </fieldset>
+        {CAPSTONE_TEXT.map(([k, label]) => (
+          <div class="fw-field fw-wide">
+            <label for={`fw-cap-${k}`}>{label}</label>
+            <textarea id={`fw-cap-${k}`} name={k} rows="3" aria-describedby={`fw-cap-${k}-error`}></textarea>
+            <p class="fw-error" id={`fw-cap-${k}-error`} hidden></p>
+          </div>
+        ))}
+        <fieldset class="fw-fieldset" aria-describedby="fw-cap-privacyChecks-error">
+          <legend>Privacy and compliance check</legend>
+          {PRIVACY_CHECKS.map(([k, label], i) => (
+            <label class="fw-inline"><input type="checkbox" name={k} id={i === 0 ? 'fw-cap-privacyChecks' : undefined} /> {label}</label>
+          ))}
+          <p class="fw-error" id="fw-cap-privacyChecks-error" hidden></p>
+        </fieldset>
+        <div class="fw-row">
+          <button type="button" class="btn btn-primary" data-cap-check>Check my report</button>
+          <button type="button" class="btn" data-export-json>Download report (JSON)</button>
+          <button type="button" class="btn" data-export-text>Download report (text)</button>
+          <button type="button" class="btn" data-print>Print report</button>
+        </div>
+      </form>
+      <div class="fw-status" role="status" aria-live="polite" data-cap-status></div>
+      <ul class="fw-errors" data-cap-errors></ul>
+      <h4>Report preview</h4>
+      <pre class="fw-preview" data-preview></pre>
+    </section>
+  </div>
+</section>
+
+<script>
+  import {
+    openFieldStore, validatePlanner, describePlanner, suggestPath, parseBatteryInputs, dutyFromTraffic, batteryRuntime,
+    sensitivity, validateBattery, validateTraffic, validateRow, missingFields, compareDirections, formatPdr, toCsv,
+    validateCapstone, exportReport, ROLES, LINK_ASSUMPTIONS, NODE_IDS, CAPSTONE_TEXT, PRIVACY_CHECKS, NUMERIC_KEYS, LOG_KEYS,
+    FIELD_STORAGE_KEY, type Workspace, type LogRow, type PlannerNode, type FieldError,
+  } from '../lib/field.ts';
+  import { requiresLowDataRateOptimize } from '../lib/rf.ts';
+  import { DEFAULT_INPUTS, SAMPLE_PLANNER, SAMPLE_LOG } from '../fixtures/field.ts';
+
+  const LAYOUT: Record<number, [number, number][]> = {
+    3: [[70, 150], [220, 60], [370, 150]],
+    4: [[70, 140], [220, 50], [220, 230], [370, 140]],
+    5: [[60, 140], [190, 50], [190, 230], [330, 140], [400, 240]],
+  };
+  const SVG = 'http://www.w3.org/2000/svg';
+  const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
+  const blankCapstone = (): Workspace['capstone'] => ({
+    topologySketch: '', predictedPath: '', resultsKind: '', results: '', testConditions: '', failure: '', adjustment: '', retest: '',
+    privacyChecks: { noPreciseLocations: false, noSecrets: false, rulesChecked: false, communityCoordinated: false },
+    complianceNotes: '', maintenancePlan: '',
+  });
+  const fresh = (): Workspace => ({ version: 1, planner: clone(SAMPLE_PLANNER), inputs: { ...DEFAULT_INPUTS }, log: [], capstone: blankCapstone() });
+
+  /** Small element helper: strings become text nodes, never HTML. */
+  function el(tag: string, attrs: Record<string, string> = {}, ...kids: (Node | string)[]) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+    e.append(...kids);
+    return e;
+  }
+
+  function download(name: string, type: string, content: string) {
+    const url = URL.createObjectURL(new Blob([content], { type }));
+    const a = el('a', { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-fw]')) {
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const store = openFieldStore(() => window.localStorage);
+    let ws: Workspace = store.initial ?? fresh();
+    let editing: number | null = null;
+
+    // ---------- storage status ----------
+    function storeStatus() {
+      const msg: Record<string, string> = {
+        none: `Saved automatically in this browser only (key ${FIELD_STORAGE_KEY}). Nothing is uploaded.`,
+        unavailable: 'This browser isn’t allowing storage, so your work lasts only while this page is open. Download your log and report to keep them.',
+        'read-failed': 'Couldn’t read saved work from this browser, so nothing is being saved. Your work lasts only while this page is open; download it to keep it.',
+        'write-failed': 'Saving failed (storage may be full or blocked). Your work is kept only while this page is open; download it to keep it.',
+        corrupt: 'A saved draft in this browser can’t be read. It has not been changed. Autosave is paused until you discard it.',
+        version: 'A saved draft from a different version of this lab is here. It has not been changed. Autosave is paused until you discard it.',
+      };
+      $('[data-store-status]').textContent = msg[store.problem ?? 'none'];
+      $('[data-discard]').hidden = store.problem !== 'corrupt' && store.problem !== 'version';
+    }
+    const save = () => {
+      store.save(ws);
+      storeStatus();
+    };
+
+    // ---------- planner ----------
+    function buildPlanner() {
+      ($('[data-count]') as HTMLSelectElement).value = String(ws.planner.nodes.length);
+      const box = $('[data-nodes]');
+      box.replaceChildren(
+        ...ws.planner.nodes.map((n, i) => {
+          const id = (k: string) => `fw-node-${n.id}-${k}`;
+          const text = (k: 'label' | 'antenna' | 'power' | 'notes', label: string) =>
+            el('div', { class: 'fw-field' }, el('label', { for: id(k) }, label), Object.assign(el('input', { id: id(k), type: 'text', 'data-node': String(i), 'data-key': k }), { value: n[k] }));
+          const role = el('select', { id: id('role'), 'data-node': String(i), 'data-key': 'role' }, ...ROLES.map((r) => el('option', { value: r }, r)));
+          (role as HTMLSelectElement).value = n.role;
+          const height = Object.assign(el('input', { id: id('heightM'), type: 'text', inputmode: 'decimal', 'data-node': String(i), 'data-key': 'heightM', 'aria-describedby': `${id('heightM')}-error` }), { value: n.heightM === null ? '' : String(n.heightM) });
+          return el('fieldset', { class: 'fw-fieldset fw-grid' }, el('legend', {}, `Node ${n.id}`),
+            text('label', 'Label'),
+            el('div', { class: 'fw-field' }, el('label', { for: id('role') }, 'Role'), role),
+            text('antenna', 'Antenna (type, polarization)'),
+            el('div', { class: 'fw-field' }, el('label', { for: id('heightM') }, 'Antenna height (m, blank if unknown)'), height, el('p', { class: 'fw-error', id: `${id('heightM')}-error`, hidden: '' })),
+            text('power', 'Power'),
+            text('notes', 'Notes'));
+        }),
+      );
+      const ids = ws.planner.nodes.map((n) => n.id);
+      const rows: HTMLElement[] = [];
+      for (let i = 0; i < ids.length; i++)
+        for (let j = i + 1; j < ids.length; j++) {
+          const [a, b] = [ids[i], ids[j]];
+          const link = ws.planner.links.find((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a));
+          const sel = el('select', { id: `fw-link-${a}${b}`, 'data-pair': `${a}-${b}`, 'aria-label': `Link ${a}–${b} assumption` }, el('option', { value: '' }, 'no link'), ...LINK_ASSUMPTIONS.map((x) => el('option', { value: x }, x)));
+          (sel as HTMLSelectElement).value = link?.assumption ?? '';
+          const note = Object.assign(el('input', { type: 'text', 'data-pair-note': `${a}-${b}`, 'aria-label': `Link ${a}–${b} note` }), { value: link?.note ?? '' });
+          rows.push(el('tr', {}, el('th', { scope: 'row' }, `${a}–${b}`), el('td', {}, sel), el('td', {}, note)));
+        }
+      $('[data-links]').replaceChildren(...rows);
+    }
+
+    function renderPlanner() {
+      const p = ws.planner;
+      const errs = validatePlanner(p);
+      $('[data-plan-errors]').replaceChildren(...errs.map((e) => el('li', {}, e.message)));
+      for (const n of p.nodes) {
+        const slot = root.querySelector<HTMLElement>(`#fw-node-${n.id}-heightM-error`);
+        const e = errs.find((x) => x.field === `node-${n.id}-heightM`);
+        if (slot) {
+          slot.hidden = !e;
+          slot.textContent = e?.message ?? '';
+          root.querySelector(`#fw-node-${n.id}-heightM`)?.setAttribute('aria-invalid', String(!!e));
+        }
+      }
+      const pos = LAYOUT[p.nodes.length] ?? LAYOUT[5];
+      const at = (id: string) => pos[p.nodes.findIndex((n) => n.id === id)];
+      const svg = $('[data-schematic]');
+      const title = svg.querySelector('title')!;
+      title.textContent = `Your plan: ${p.nodes.length} nodes and ${p.links.length} links; full description in the list below.`;
+      const parts: Element[] = [title];
+      for (const l of p.links) {
+        const [x1, y1] = at(l.a);
+        const [x2, y2] = at(l.b);
+        const line = document.createElementNS(SVG, 'line');
+        Object.entries({ x1, y1, x2, y2 }).forEach(([k, v]) => line.setAttribute(k, String(v)));
+        line.setAttribute('class', `ln ln-${l.assumption.replace(' ', '-')}`);
+        parts.push(line);
+      }
+      p.nodes.forEach((n, i) => {
+        const [x, y] = pos[i];
+        const g = document.createElementNS(SVG, 'g');
+        const c = document.createElementNS(SVG, 'circle');
+        Object.entries({ cx: x, cy: y, r: 20, class: `nd nd-${n.role.replace(/ /g, '-')}` }).forEach(([k, v]) => c.setAttribute(k, String(v)));
+        const t = document.createElementNS(SVG, 'text');
+        Object.entries({ x, y: y + 6, 'text-anchor': 'middle', class: 'nd-id' }).forEach(([k, v]) => t.setAttribute(k, String(v)));
+        t.textContent = n.id;
+        const r = document.createElementNS(SVG, 'text');
+        Object.entries({ x, y: y + 36, 'text-anchor': 'middle', class: 'nd-role' }).forEach(([k, v]) => r.setAttribute(k, String(v)));
+        r.textContent = n.role;
+        g.append(c, t, r);
+        parts.push(g);
+      });
+      svg.replaceChildren(...parts);
+      $('[data-plan-desc]').replaceChildren(...describePlanner(p).map((l) => el('li', {}, l)));
+      const last = p.nodes.at(-1)!.id;
+      const path = suggestPath(p, 'A', last);
+      $('[data-path]').textContent = path
+        ? `Suggested path A → ${last} by fewest assumed-usable links: ${path.join(' → ')}. A planning aid, not how either firmware routes.`
+        : `No path from A to ${last} over links not assumed obstructed.`;
+    }
+
+    // ---------- battery ----------
+    const batteryForm = $<HTMLFormElement>('[data-battery]');
+    function fillBattery() {
+      for (const [k, v] of Object.entries(ws.inputs)) {
+        const input = batteryForm.elements.namedItem(k) as HTMLInputElement | HTMLSelectElement | null;
+        if (!input) continue;
+        if (input instanceof HTMLInputElement && input.type === 'checkbox') input.checked = v === 'true';
+        else input.value = v;
+      }
+    }
+    const PCT: Record<string, string> = { usableFraction: 'usablePct', coldDerating: 'coldPct', converterEfficiency: 'efficiencyPct', gpsDutyFraction: 'gpsPct', listeningShare: 'listeningPct' };
+    function renderBattery() {
+      const { core, traffic } = parseBatteryInputs(ws.inputs);
+      const errors: FieldError[] = [...validateTraffic(traffic)];
+      let duty: ReturnType<typeof dutyFromTraffic> | null = null;
+      if (!errors.length) {
+        try {
+          duty = dutyFromTraffic(traffic);
+        } catch (e) {
+          errors.push({ field: 'packetsPerHour', message: (e as Error).message.replace(/^packetsPerHour: /, '') });
+        }
+      }
+      errors.push(...validateBattery({ ...core, duty: duty ?? { tx: 0, rx: 1, sleep: 0 } }).filter((e) => e.field !== 'duty' && (duty || e.field !== 'averageCurrentMa')));
+      for (const input of batteryForm.querySelectorAll<HTMLInputElement>('input[type="text"]')) {
+        const k = input.name;
+        const e = errors.find((x) => x.field === k || PCT[x.field] === k);
+        const slot = root.querySelector<HTMLElement>(`#fw-in-${k}-error`)!;
+        slot.hidden = !e;
+        slot.textContent = e?.message ?? '';
+        input.setAttribute('aria-invalid', String(!!e));
+      }
+      const air = errors.find((e) => e.field === 'airtime');
+      const avg = errors.find((e) => e.field === 'averageCurrentMa');
+      const airSlot = $('#fw-in-airtime-error');
+      airSlot.hidden = !air && !avg;
+      airSlot.textContent = [air?.message, avg?.message].filter(Boolean).join(' ');
+      const out = $('[data-battery-out]');
+      const sensBody = $('[data-sens]');
+      if (errors.length || !duty) {
+        out.replaceChildren(el('dt', {}, 'Result'), el('dd', {}, 'Fix the highlighted inputs to see a runtime.'));
+        sensBody.replaceChildren();
+        return;
+      }
+      const r = batteryRuntime({ ...core, duty });
+      const de = requiresLowDataRateOptimize(traffic.airtime.sf, traffic.airtime.bandwidthKHz);
+      const pairs: [string, string][] = [
+        ['Packet airtime (Lab A)', `${duty.packetMs.toFixed(3)} ms; low-data-rate optimization ${de ? 'on' : 'off'} by the 16 ms rule`],
+        ['Time on air', `${duty.txSecondsPerHour.toFixed(3)} s per hour (${(duty.tx * 100).toFixed(4)}%)`],
+        ['Listening / sleep', `${(duty.rx * 100).toFixed(4)}% / ${(duty.sleep * 100).toFixed(4)}% of each hour`],
+        ['Average current', `${r.averageCurrentMa.toFixed(3)} mA (transmit ${r.contributionsMa.tx.toFixed(3)}, listen ${r.contributionsMa.rx.toFixed(3)}, sleep ${r.contributionsMa.sleep.toFixed(3)}, GPS ${r.contributionsMa.gps.toFixed(3)})`],
+        ['Usable energy', `${r.usableEnergyWh.toFixed(3)} Wh`],
+        ['Load power', `${(r.loadW * 1000).toFixed(2)} mW`],
+        ['Modelled runtime', `${r.runtimeHours.toFixed(1)} h (${r.runtimeDays.toFixed(2)} days), not a measured battery life`],
+      ];
+      out.replaceChildren(...pairs.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
+      sensBody.replaceChildren(...sensitivity(core, traffic).map((s) => el('tr', {}, el('th', { scope: 'row' }, s.label), el('td', {}, `${s.averageCurrentMa.toFixed(3)} mA`), el('td', {}, `${s.runtimeHours.toFixed(1)} h`))));
+    }
+
+    // ---------- log ----------
+    const logForm = $<HTMLFormElement>('[data-logform]');
+    function readRow(): { row: LogRow; errors: FieldError[] } {
+      const errors: FieldError[] = [];
+      const row = {} as Record<string, unknown>;
+      for (const k of LOG_KEYS) {
+        const v = (logForm.elements.namedItem(k) as HTMLInputElement).value;
+        if ((NUMERIC_KEYS as readonly string[]).includes(k)) {
+          const t = v.trim().replace('−', '-');
+          if (!t) row[k] = null;
+          else if (/^-?\d+(\.\d+)?$/.test(t)) row[k] = Number(t);
+          else {
+            row[k] = null;
+            errors.push({ field: k, message: 'Enter a plain number or leave it blank.' });
+          }
+        } else row[k] = v;
+      }
+      return { row: row as unknown as LogRow, errors: [...errors, ...validateRow(row as unknown as LogRow).filter((e) => !errors.some((x) => x.field === e.field))] };
+    }
+    function showLogErrors(errors: FieldError[]) {
+      for (const k of LOG_KEYS) {
+        const e = errors.find((x) => x.field === k);
+        const slot = root.querySelector<HTMLElement>(`#fw-log-${k}-error`)!;
+        slot.hidden = !e;
+        slot.textContent = e?.message ?? '';
+        root.querySelector(`#fw-log-${k}`)!.setAttribute('aria-invalid', String(!!e));
+      }
+    }
+    function fillRow(r: LogRow | null) {
+      for (const k of LOG_KEYS) {
+        const v = r ? r[k] : '';
+        (logForm.elements.namedItem(k) as HTMLInputElement).value = v === null ? '' : String(v);
+      }
+    }
+    function renderLog() {
+      $('[data-log-rows]').replaceChildren(
+        ...ws.log.map((r, i) => {
+          const miss = missingFields(r);
+          const edit = el('button', { type: 'button', class: 'btn' }, 'Edit');
+          edit.addEventListener('click', () => {
+            editing = i;
+            fillRow(r);
+            $('[data-log-save]').textContent = 'Update row';
+            $('[data-log-cancel]').hidden = false;
+            (root.querySelector('#fw-log-testId') as HTMLInputElement).focus();
+          });
+          const del = el('button', { type: 'button', class: 'btn' }, 'Delete');
+          del.addEventListener('click', () => {
+            if (!confirm(`Delete row ${r.testId}?`)) return;
+            ws.log.splice(i, 1);
+            editing = null;
+            update();
+          });
+          return el('tr', {}, el('th', { scope: 'row' }, r.testId), el('td', {}, r.direction || '(not set)'),
+            el('td', {}, r.sendCount === null ? '' : String(r.sendCount)), el('td', {}, r.receiveCount === null ? '' : String(r.receiveCount)),
+            el('td', {}, r.attempts === null ? '' : String(r.attempts)), el('td', {}, miss.length ? `missing: ${miss.join(', ')}` : 'none'),
+            el('td', { class: 'fw-noprint' }, edit, ' ', del));
+        }),
+      );
+      const c = compareDirections(ws.log);
+      const line = (name: string, s: typeof c.forward) =>
+        el('li', {}, `${name}: ${formatPdr(s)}${s.excluded.length ? `; left out (missing or invalid counts): ${s.excluded.join(', ')}` : ''}`);
+      $('[data-log-compare]').replaceChildren(line('Forward', c.forward), line('Reverse', c.reverse));
+    }
+
+    // ---------- capstone ----------
+    const capForm = $<HTMLFormElement>('[data-capform]');
+    function fillCapstone() {
+      const c = ws.capstone;
+      for (const [k] of CAPSTONE_TEXT) (capForm.elements.namedItem(k) as HTMLTextAreaElement).value = c[k] as string;
+      for (const r of capForm.querySelectorAll<HTMLInputElement>('input[name="resultsKind"]')) r.checked = r.value === c.resultsKind;
+      for (const [k] of PRIVACY_CHECKS) (capForm.elements.namedItem(k) as HTMLInputElement).checked = c.privacyChecks[k];
+    }
+    function showCapErrors(errors: FieldError[]) {
+      for (const k of [...CAPSTONE_TEXT.map(([k]) => k), 'resultsKind', 'privacyChecks']) {
+        const e = errors.find((x) => x.field === k);
+        const slot = $(`#fw-cap-${k}-error`);
+        slot.hidden = !e;
+        slot.textContent = e?.message ?? '';
+        root.querySelector(`#fw-cap-${k}`)?.setAttribute('aria-invalid', String(!!e));
+      }
+      $('[data-cap-errors]').replaceChildren(
+        ...errors.map((e) => {
+          const target = root.querySelector(`#fw-cap-${e.field}`) ? `#fw-cap-${e.field}` : '#fw-plan-h';
+          return el('li', {}, el('a', { href: target }, e.message));
+        }),
+      );
+    }
+    let checked = false;
+    function renderCapstone() {
+      const report = exportReport(ws, new Date().toISOString());
+      $('[data-preview]').textContent = report.text;
+      // Status never claims completion from an earlier check: it is recomputed from the current text.
+      if (checked) {
+        showCapErrors(report.errors);
+        $('[data-cap-status]').textContent = report.status === 'final'
+          ? 'Complete: every required part is present. Downloads will be marked FINAL.'
+          : `Not complete yet: ${report.errors.length} part${report.errors.length === 1 ? '' : 's'} missing. Downloads will be marked DRAFT.`;
+      }
+    }
+
+    // ---------- wiring ----------
+    function update() {
+      renderPlanner();
+      renderBattery();
+      renderLog();
+      renderCapstone();
+      save();
+    }
+
+    $('[data-count]').addEventListener('change', (e) => {
+      const n = Number((e.target as HTMLSelectElement).value);
+      const nodes = ws.planner.nodes;
+      if (n < nodes.length && !confirm(`Remove node${nodes.length - n > 1 ? 's' : ''} ${NODE_IDS.slice(n, nodes.length).join(', ')} and their links?`)) {
+        (e.target as HTMLSelectElement).value = String(nodes.length);
+        return;
+      }
+      while (nodes.length < n) {
+        const id = NODE_IDS[nodes.length];
+        nodes.push({ id, label: `Node ${id}`, role: 'endpoint', antenna: '', heightM: null, power: '', notes: '' });
+      }
+      nodes.length = n;
+      const ids = new Set(nodes.map((x) => x.id));
+      ws.planner.links = ws.planner.links.filter((l) => ids.has(l.a) && ids.has(l.b));
+      buildPlanner();
+      update();
+    });
+    $('[data-nodes]').addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      const node = ws.planner.nodes[Number(t.dataset.node)] as PlannerNode & Record<string, unknown>;
+      const key = t.dataset.key!;
+      if (key === 'heightM') {
+        const v = t.value.trim();
+        node.heightM = v === '' ? null : /^\d+(\.\d+)?$/.test(v) ? Number(v) : Number.NaN;
+      } else node[key] = t.value;
+      update();
+    });
+    $('[data-links]').addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      const pair = t.dataset.pair ?? t.dataset.pairNote;
+      if (!pair) return;
+      const [a, b] = pair.split('-');
+      const i = ws.planner.links.findIndex((l) => (l.a === a && l.b === b) || (l.a === b && l.b === a));
+      if (t.dataset.pair) {
+        if (!t.value) {
+          if (i >= 0) ws.planner.links.splice(i, 1);
+        } else if (i >= 0) ws.planner.links[i].assumption = t.value as never;
+        else ws.planner.links.push({ a, b, assumption: t.value as never, note: (root.querySelector(`[data-pair-note="${pair}"]`) as HTMLInputElement).value });
+      } else if (i >= 0) ws.planner.links[i].note = t.value;
+      update();
+    });
+    batteryForm.addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      ws.inputs[t.name] = t.type === 'checkbox' ? String(t.checked) : t.value;
+      update();
+    });
+    logForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const { row, errors } = readRow();
+      if (!errors.length && ws.log.some((r, i) => r.testId === row.testId && i !== editing))
+        errors.push({ field: 'testId', message: 'Another row already uses this test ID.' });
+      showLogErrors(errors);
+      if (errors.length) {
+        (root.querySelector(`#fw-log-${errors[0].field}`) as HTMLElement)?.focus();
+        return;
+      }
+      if (editing === null) ws.log.push(row);
+      else ws.log[editing] = row;
+      editing = null;
+      fillRow(null);
+      $('[data-log-save]').textContent = 'Add row';
+      $('[data-log-cancel]').hidden = true;
+      update();
+    });
+    $('[data-log-cancel]').addEventListener('click', () => {
+      editing = null;
+      fillRow(null);
+      showLogErrors([]);
+      $('[data-log-save]').textContent = 'Add row';
+      $('[data-log-cancel]').hidden = true;
+    });
+    $('[data-log-sample]').addEventListener('click', () => {
+      const taken = new Set(ws.log.map((r) => r.testId));
+      const add = SAMPLE_LOG.filter((r) => !taken.has(r.testId));
+      ws.log.push(...clone(add));
+      update();
+    });
+    $('[data-log-download]').addEventListener('click', () => download('my-field-log.csv', 'text/csv;charset=utf-8', toCsv(ws.log)));
+
+    capForm.addEventListener('input', (e) => {
+      const t = e.target as HTMLInputElement;
+      if (t.name === 'resultsKind') ws.capstone.resultsKind = t.value as never;
+      else if (PRIVACY_CHECKS.some(([k]) => k === t.name)) ws.capstone.privacyChecks[t.name as keyof Workspace['capstone']['privacyChecks']] = t.checked;
+      else if (CAPSTONE_TEXT.some(([k]) => k === t.name)) (ws.capstone as unknown as Record<string, string>)[t.name] = t.value;
+      update();
+    });
+    $('[data-cap-fill-topology]').addEventListener('click', () => {
+      const cur = ws.capstone.topologySketch.trim();
+      if (cur && !confirm('Replace your topology sketch with the plan description?')) return;
+      ws.capstone.topologySketch = describePlanner(ws.planner).join('\n');
+      fillCapstone();
+      update();
+    });
+    $('[data-cap-check]').addEventListener('click', () => {
+      checked = true;
+      renderCapstone();
+      const first = validateCapstone(ws.capstone)[0];
+      if (first) (root.querySelector(`#fw-cap-${first.field}`) as HTMLElement)?.focus();
+    });
+    const exportAs = (kind: 'json' | 'text') => {
+      checked = true;
+      const r = exportReport(ws, new Date().toISOString());
+      renderCapstone();
+      if (kind === 'json') download(r.filename, 'application/json', r.json);
+      else download(r.filename.replace(/\.json$/, '.txt'), 'text/plain;charset=utf-8', r.text);
+      $('[data-cap-status]').textContent = r.status === 'final'
+        ? `Downloaded ${kind === 'json' ? r.filename : r.filename.replace(/\.json$/, '.txt')} (FINAL).`
+        : `Downloaded a DRAFT: ${r.errors.length} required part${r.errors.length === 1 ? '' : 's'} still missing.`;
+    };
+    $('[data-export-json]').addEventListener('click', () => exportAs('json'));
+    $('[data-export-text]').addEventListener('click', () => exportAs('text'));
+    $('[data-print]').addEventListener('click', () => window.print());
+
+    $('[data-reset]').addEventListener('click', () => {
+      if (!confirm('Reset the whole workbench? This clears your plan, battery inputs, log rows and report draft from this page and from this browser’s saved copy.')) return;
+      ws = fresh();
+      editing = null;
+      checked = false;
+      store.discard();
+      buildPlanner();
+      fillBattery();
+      fillRow(null);
+      fillCapstone();
+      showCapErrors([]);
+      $('[data-cap-status]').textContent = 'Workbench reset.';
+      update();
+    });
+    $('[data-discard]').addEventListener('click', () => {
+      if (!confirm('Discard the unreadable saved draft? It will be deleted from this browser; your current work on this page is kept and saved instead.')) return;
+      store.discard();
+      save();
+    });
+
+    buildPlanner();
+    fillBattery();
+    fillCapstone();
+    update();
+    $('[data-ui]').hidden = false;
+  }
+</script>
+
+<style>
+  .fw-note,
+  .fw-hint {
+    color: var(--sl-color-gray-3);
+    max-width: 70ch;
+  }
+  .fw-hint {
+    font-size: var(--sl-text-sm);
+  }
+  .fw-ui[hidden] {
+    display: none;
+  }
+  .fw-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    margin-block: 1rem;
+  }
+  .fw-scroll:focus-visible {
+    outline: 3px solid var(--mra-focus);
+    outline-offset: 2px;
+  }
+  .fw-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+  }
+  .fw-table caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.5rem;
+  }
+  .fw-table th,
+  .fw-table td {
+    text-align: start;
+    vertical-align: top;
+    padding: 0.35rem 0.75rem 0.35rem 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    font-variant-numeric: tabular-nums;
+  }
+  .fw-figure {
+    margin: 1rem 0;
+  }
+  .fw-schematic {
+    width: 100%;
+    max-width: 34rem;
+    height: auto;
+    display: block;
+    font-family: var(--__sl-font);
+  }
+  .ln {
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 3;
+  }
+  .ln-partly-obstructed {
+    stroke-dasharray: 12 6;
+  }
+  .ln-obstructed {
+    stroke-dasharray: 2 6;
+    stroke: var(--sl-color-gray-4);
+  }
+  .ln-unknown {
+    stroke-dasharray: 10 4 2 4;
+    stroke: var(--sl-color-gray-3);
+  }
+  .nd {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 2;
+  }
+  .nd-relay {
+    stroke: var(--sl-color-accent);
+    stroke-width: 4;
+  }
+  .nd-endpoint-that-relays {
+    stroke: var(--sl-color-accent);
+    stroke-dasharray: 4 3;
+    stroke-width: 3;
+  }
+  .nd-id {
+    fill: var(--sl-color-white);
+    font-size: 17px;
+    font-weight: 700;
+  }
+  .nd-role {
+    fill: var(--sl-color-gray-3);
+    font-size: 12px;
+  }
+  .fw-desc li,
+  .fw-check li {
+    margin-block: 0.3rem;
+  }
+  .fw-details summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .fw-dl {
+    display: grid;
+    grid-template-columns: minmax(8rem, auto) 1fr;
+    gap: 0.35rem 1rem;
+  }
+  .fw-dl dt {
+    color: var(--sl-color-gray-3);
+  }
+  .fw-dl dd {
+    margin: 0;
+  }
+  .fw-panel {
+    border-top: 1px solid var(--sl-color-gray-5);
+    margin-top: 2rem;
+    padding-top: 0.5rem;
+  }
+  .fw-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0.75rem 1.25rem;
+  }
+  .fw-fieldset {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    padding: 0.5rem 1rem 1rem;
+    margin: 1rem 0 0;
+    min-width: 0;
+  }
+  .fw-fieldset legend {
+    font-weight: 600;
+    padding-inline: 0.25rem;
+  }
+  .fw-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+  }
+  .fw-wide {
+    margin-top: 1rem;
+  }
+  .fw-field label {
+    font-size: var(--sl-text-sm);
+  }
+  .fw input[type='text'],
+  .fw select,
+  .fw textarea {
+    min-height: 2.75rem;
+    font: inherit;
+    color: var(--sl-color-white);
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.25rem;
+    padding: 0.4rem 0.5rem;
+    max-width: 100%;
+  }
+  .fw textarea {
+    width: 100%;
+    resize: vertical;
+  }
+  .fw [aria-invalid='true'] {
+    border-color: var(--sl-color-accent);
+    border-width: 2px;
+  }
+  .fw-check {
+    flex-direction: row;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+  .fw input[type='checkbox'],
+  .fw input[type='radio'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--sl-color-accent);
+  }
+  .fw-inline {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+  }
+  .fw-error {
+    margin: 0;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-accent-high);
+    font-weight: 600;
+  }
+  .fw-error::before {
+    content: '⚠ ';
+  }
+  .fw-errors {
+    color: var(--sl-color-accent-high);
+  }
+  .fw-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-block: 1rem;
+    grid-column: 1 / -1;
+  }
+  .fw-status {
+    color: var(--sl-color-gray-2);
+    margin-block: 0.75rem;
+  }
+  .fw-preview {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-size: var(--sl-text-sm);
+    background: var(--sl-color-gray-6);
+    padding: 1rem;
+    border-radius: 0.25rem;
+    max-height: 30rem;
+    overflow-y: auto;
+  }
+
+  @media print {
+    .fw-noprint,
+    .fw .btn,
+    .fw-status {
+      display: none !important;
+    }
+    .fw-preview {
+      max-height: none;
+      overflow: visible;
+      background: none;
+      color: #000;
+    }
+    .fw-scroll {
+      overflow: visible;
+    }
+  }
+</style>

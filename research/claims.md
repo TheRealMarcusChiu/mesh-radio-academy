@@ -121,6 +121,16 @@ Scope for all rows: MeshCore firmware 1.18.0 role releases unless stated; client
 | <a id="rf-c16"></a>RF-C16 | LoRaMac-node v4.7.0 computes the same symbol count in integer form, (4·(ceil-term·(CR+4) + preamble + 12) + 1)·2^(SF−2), then divides by bandwidth in Hz and rounds **up** to whole milliseconds. It enables low-data-rate optimization for 125 kHz at SF11–12 and 250 kHz at SF12, which matches the datasheet's over-16 ms rule at 125/250/500 kHz. | SX1276 driver, SF7–12, 125/250/500 kHz | RF-S02 `SX1276GetLoRaTimeOnAirNumerator`, `SX1276GetTimeOnAir`, `SX1276GetLoRaBandwidthInHz` | 2026-11-09 | source-verified (read for Lab A); driver not re-executed |
 | <a id="rf-c14"></a>RF-C14 | Antenna polarization mismatch adds loss; the free-space formula assumes it away. | Concept | RF-S03 assumptions | 2026-11-09 | definition |
 
+## Field planning, logs and exports
+
+| ID | Statement | Scope | Evidence | Checked | Status |
+|---|---|---|---|---|---|
+| <a id="fld-c01"></a>FLD-C01 | Average current is time-weighted: transmit current applies only during transmit time, and the other current applies for the rest of the hour, so transmit time replaces listening time rather than adding to it. Lab D splits the non-transmit time into listening and sleep and adds GPS as a separate overlay. | Synthetic model; any board | RF-S04 cell C10 (and C16 for life in days); RF-C08 | 2026-11-09 | verified-document (structure) |
+| <a id="fld-c02"></a>FLD-C02 | Runtime h = (capacity mAh ÷ 1000 × battery V × usable fraction × (1 − cold derating)) × converter efficiency ÷ (average mA ÷ 1000 × load-rail V). With equal voltages this is capacity × usable × efficiency ÷ average mA, the workbook's form with its fixed 0.9 replaced by explicit inputs. Cold derating is a user assumption, not a measured cell property. | Synthetic model | Derived algebra (Wh and W units) from RF-C08 and FLD-C01 | 2026-11-09 | definition (derived); not a benchmark |
+| <a id="fld-c03"></a>FLD-C03 | The course's delivery ratio is unique scheduled messages received ÷ messages scheduled. Duplicates count once, retries and other on-air attempts are reported separately, nothing scheduled means no sample (not 0%), and the sample size is shown beside every percentage. A small sample such as 17 of 20 does not establish reliability, and no confidence interval is claimed. | Course method | Course brief; RF-C05 (retries are extra packets) | 2026-11-09 | definition (course method) |
+| <a id="fld-c04"></a>FLD-C04 | The field-log CSV uses CRLF records and quotes fields containing commas, quotes or line breaks, doubling embedded quotes. Text cells starting with `=`, `+`, `-`, `@`, tab, CR, LF or full-width lookalikes get a leading `'` inside quotes. Numeric columns are written as plain numbers, and blanks stay blank. | Export format | FLD-S01 §2; FLD-S02 | 2026-11-09 | verified-document; Excel re-save caveat per FLD-S02 |
+| <a id="fld-c05"></a>FLD-C05 | A conservative hardware test starts short, keeps endpoints and RF settings fixed and varies one factor per repeat. One sender's channel share = packet airtime ÷ send interval (56.576 ms every 30 s ≈ 0.19%). Local rules and community guidance come first. | Proposed practice + arithmetic | RF-C03; NTX-C05; REG-C01 | 2026-11-09 | proposed + verified-calculation |
+
 ## Hardware and safety
 
 | ID | Statement | Scope | Evidence | Checked | Status |
@@ -172,4 +182,6 @@ Synthetic inputs used by lessons and tests. None is a capture or measurement.
 | <a id="rf-f01"></a>RF-F01 | SF7 / 125 kHz / CR 4/5 / 20 B / 8-symbol preamble / explicit header / CRC on / LDRO off. | Lesson 01 worked example | verified-calculation (RF-C03) |
 | <a id="rf-f02"></a>RF-F02 | As RF-F01 at SF12 with LDRO on. | Lesson 01 worked example | verified-calculation (RF-C04) |
 | <a id="rf-f03"></a>RF-F03 | Link budget 14 dBm, 2 dBi each end, 1 dB loss each end, 115 dB path loss, −120 dBm assumed sensitivity. | Lesson 01 worked example | verified-calculation (RF-C07) |
+| <a id="fld-f01"></a>FLD-F01 | Battery: 2000 mAh, 3.7 V battery and load, 80% usable, 90% efficient; 120 / 15 / 0.1 mA at 1% / 98% / 1% → 15.901 mA, 90.5603421 h. | `src/fixtures/field.ts` `FIELD_F01_BATTERY` | verified-calculation (FLD-C02) |
+| <a id="fld-f02"></a>FLD-F02 | Traffic: 60 RF-F01 packets/h (56.576 ms each), listening the rest of the time. Sample log: forward 17 of 20 scheduled (85%, 23 attempts); reverse 14 of 20 (70%) under different conditions; one row with a missing receive count, excluded. | `src/fixtures/field.ts` | synthetic (FLD-C01, FLD-C03) |
 | <a id="rf-f04"></a>RF-F04 | RF-F03 with 25 dB extra assumed loss. | Lesson 01 worked example | verified-calculation (RF-C07) |

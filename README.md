@@ -24,6 +24,11 @@ What exists today:
   the SX1276 datasheet formula, plus a link budget with an assumed obstruction,
   using the pure functions in `src/lib/rf.ts` (inputs are validated, never
   clamped) and static worked examples that need no JavaScript;
+- a **field planner and capstone workbench** (Lab D): a 3–5 node plan with
+  schematic, a battery-runtime model that reuses Lab A airtime, a field log
+  with delivery ratios and sample sizes, CSV downloads and exports, and a
+  validated capstone report (JSON/text/print), all stored only in the browser
+  (`src/lib/field.ts`, `docs/field-contract.md`);
 - the **evidence ledger** in `research/`: source registry, claim ledger and
   baselines, rendered on the site's Reference pages;
 - the site shell: navigation, search, a dark field-guide theme (light theme
@@ -33,7 +38,7 @@ The simulated message trace on the home page and in Module 00 is a generic
 **teaching model**, not either protocol's routing. No radio, board or app
 combination has been physically tested for this course.
 
-Not yet written: modules 03–12, packet inspector, field planner, glossary and
+Not yet written on this branch: modules 03–12, packet inspector, glossary and
 appendices. See `docs/backlog.md` for carried items.
 
 There is no backend, account, analytics, telemetry, advertising or location
@@ -52,7 +57,7 @@ access. Nothing is sent from the visitor's browser.
 |---|---|
 | `npm ci` | Install the exact locked dependencies |
 | `npm run dev` | Start the local dev server at `http://localhost:4321/mesh-radio-academy/` |
-| `npm test` | Run unit tests (`node --test`): routing model, RF airtime and link budget, ledger integrity, lab wiring, layer trace, progress storage, lesson schema |
+| `npm test` | Run unit tests (`node --test`): routing model, RF airtime and link budget, field planner/battery/PDR/CSV/report/storage, ledger integrity, lab wiring, layer trace, progress storage, lesson schema |
 | `npm run check` | Astro and TypeScript diagnostics |
 | `npm run build` | Build the static site to `dist/` under the `/mesh-radio-academy/` base path |
 | `npm run check:links` | After a build, confirm every internal link, asset and `#anchor` in `dist/` resolves under the base path |

@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const ID = /\b(?:MT|MC|RF|HW|REG|NTX|LW)-[A-Z0-9]+\b/g;
+const ID = /\b(?:MT|MC|RF|HW|REG|NTX|LW|FLD)-[A-Z0-9]+\b/g;
 const ANCHOR = /<a id="([a-z0-9-]+)"><\/a>([A-Z0-9-]+)/g;
 
 const read = (p: string) => readFileSync(p, 'utf8');

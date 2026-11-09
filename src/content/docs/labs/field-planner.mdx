@@ -1,0 +1,84 @@
+---
+title: Field planner and capstone workbench
+description: Plan a 3–5 node network, estimate battery runtime from explicit assumptions, keep a field log with honest delivery ratios, and build your capstone report, all in your browser.
+---
+
+import FieldWorkbench from '../../../components/FieldWorkbench.astro';
+import Cite from '../../../components/Cite.astro';
+
+This lab is where planning meets evidence. You sketch a small network, estimate how long each node's battery
+might last under assumptions you state, log test results in a form you can compare fairly, and assemble a
+capstone report. You can finish all of it without a radio; the results are then **simulated**, and the
+report says so.
+
+## How the numbers work
+
+- **Average current is time-weighted.** Transmit current counts only for the time on air, and the rest of the
+  hour is split between listening and sleep. Transmit time replaces listening time; it isn't added on top.
+  GPS is a separate overlay. This follows the structure of Seeed's T1000-E battery workbook.
+  <Cite ids="FLD-C01 RF-C08" />
+- **Time on air** comes from the [RF sandbox](../rf-sandbox/) formula for the packet settings you choose,
+  times the packets the node sends per hour, its own plus relayed. Bytes are physical-layer bytes, not
+  text characters. <Cite ids="RF-C01 RF-C05" />
+- **Runtime** = usable battery energy × converter efficiency ÷ load power, so the battery and the load rail
+  can be at different voltages. Cold derating is *your* assumption, not a property measured for any cell.
+  Charging limits are a separate matter; the T1000-E, for example, charges only between 0 and 45 °C.
+  <Cite ids="FLD-C02 HW-C05" />
+- **Delivery ratio** = unique scheduled messages received ÷ messages scheduled. Duplicates count once,
+  retries are on-air attempts and never inflate either number, and nothing scheduled means no sample (not
+  0%). Every percentage shows its sample size. <Cite ids="FLD-C03" />
+- **CSV exports** quote commas, quotes and line breaks, and neutralize text that a spreadsheet might run as
+  a formula. <Cite ids="FLD-C04" />
+
+None of this predicts range, measures a battery or decides what is legal to transmit.
+
+<FieldWorkbench />
+
+## Experiment 1: a sleepy endpoint versus an always-on relay
+
+- **Setup.** Reset the workbench. The battery defaults are synthetic: 2000 mAh, 120 / 15 / 0.1 mA, 60
+  packets per hour, always listening.
+- **Change one thing.** Lower *Share of non-transmit time spent listening* from 100% to 10%.
+- **Expect.** Average current falls from 15.099 mA to about 1.702 mA, and modelled runtime rises from about
+  95 h to about 846 h. Listening, not transmitting, dominates an always-on relay's budget at this traffic level.
+  <Cite ids="FLD-C01" />
+- **If you see something else.** If runtime barely moves, check the listening and sleep currents: when they
+  are equal, sleeping saves nothing. An error means an input is outside its range or isn't a plain number.
+
+## Experiment 2: what an incomplete row does to the delivery ratio
+
+- **Setup.** Add the synthetic sample rows. Reverse shows 14 of 20 (70%), and row R2 is left out because its
+  receive count is missing.
+- **Change one thing.** Edit R2 and enter 7 as the unique messages received.
+- **Expect.** Reverse becomes 21 of 30 (70%) with a sample of 30. On-air attempts now show as "not
+  recorded", because R2 has no attempt count and the lab won't guess one. <Cite ids="FLD-C03" />
+- **If you see something else.** A received count above the sent count is refused. Forward and reverse are
+  never merged: they ran under different conditions.
+
+## Experiment 3: when a report is final
+
+- **Setup.** Fill in every capstone part (the worked solution above shows the level of detail), tick all
+  four checks and press *Check my report*.
+- **Change one thing.** Clear the *One failure* box.
+- **Expect.** The status changes to "Not complete yet", the error links to the empty box, and downloads are
+  labelled DRAFT. Restore the text and the next check shows complete again; the status always reflects the
+  current text.
+- **If you see something else.** If your results came from your own radios, choose *Measured*. The report
+  records that choice; it never turns simulated results into measured ones.
+
+## What is exported
+
+- `my-field-log.csv`: your log rows with the same columns as the blank template.
+- `capstone-report-final.json` or `capstone-report-draft.json`: plan, battery inputs and result, log rows,
+  delivery comparison, capstone text and any missing parts, with format name and version.
+- The `.txt` version of the same report, readable anywhere.
+- *Print report* prints the report preview, schematic and tables without the form controls.
+
+Files are made in your browser and saved by your browser; nothing is sent anywhere. There is no import;
+keep your own copy of anything you want to keep.
+
+## References
+
+- Claims: <Cite ids="FLD-C01 FLD-C02" /> <Cite ids="FLD-C03 FLD-C04" /> <Cite ids="FLD-C05 RF-C08" />
+- Sources: <Cite ids="RF-S04 FLD-S01 FLD-S02" />
+- Code: `src/lib/field.ts`, `src/fixtures/field.ts` and `docs/field-contract.md`, tested in `tests/field.test.ts`.
