@@ -1,0 +1,78 @@
+---
+title: RF sandbox
+description: Work out LoRa packet airtime and a link budget from explicit inputs, with every step shown and the formula's limits stated.
+---
+
+import RfSandbox from '../../../components/RfSandbox.astro';
+import Cite from '../../../components/Cite.astro';
+
+This lab turns two calculations from [Module 01](../../modules/01-rf-foundations/) into something you can
+change and watch: how long one LoRa packet stays on the air, and how much signal is left after a chain of
+gains and losses. Every input is a teaching value you choose. Nothing here measures a real radio.
+
+## What the calculator covers, and what it doesn't
+
+- **Airtime formula.** The Semtech SX1276/77/78/79 datasheet (Rev. 4, §4.1.1.7, p. 31): symbol time
+  Ts = 2^SF / BW, preamble time (n + 4.25)·Ts, and payload symbols
+  8 + max(ceil((8·PL − 4·SF + 28 + 16·CRC − 20·IH) / (4·(SF − 2·DE))) · (CR + 4), 0). <Cite ids="RF-C01" />
+- **Reference subset.** SF7–SF12 at 125, 250 or 500 kHz. SF5, SF6 and narrower bandwidths such as 62.5 kHz
+  are left out because this formula and benchmark set weren't cross-checked for them. That doesn't make them
+  illegal or unsupported on every radio; other chips have their own references.
+- **Low-data-rate optimization (DE).** The datasheet mandates it when a symbol lasts over 16 ms. The
+  calculator switches it automatically when you change SF or bandwidth, and flags a mismatch if you override
+  it. <Cite ids="RF-C02" />
+- **Payload bytes** are the physical-layer bytes handed to the radio, including any mesh header or encryption
+  bytes. They are not text characters, and the calculator doesn't add any protocol's overhead for you.
+  <Cite ids="RF-C05" />
+- **Rounded up** shows the packet time rounded up to a whole millisecond, the way Semtech's LoRaMac-node
+  driver reports it; the exact value is shown alongside. <Cite ids="RF-C16" />
+- **Aggregate airtime** is identical packets added end to end: transmit time only, with no gaps, channel
+  waiting, ACKs, relays or retries unless you count them as extra packets.
+- **Benchmarks.** The two airtime fixtures (56.576 ms and 1318.912 ms) were cross-checked against the
+  tagged driver code; the two link-budget fixtures use synthetic values and an assumed sensitivity.
+  <Cite ids="RF-C03 RF-C04 RF-C07" />
+
+<RfSandbox />
+
+## Experiment 1: spreading factor and airtime
+
+- **Setup.** Press *Reset to worked examples*: SF7, 125 kHz, CR 4/5, 20 bytes, 10 packets.
+- **Change one thing.** Raise the spreading factor one step at a time from SF7 to SF12.
+- **Expect.** The symbol time doubles at every step (1.024 ms at SF7, 32.768 ms at SF12). The packet time
+  roughly doubles too. At some steps it's a little less (SF7 → SF8 is ×1.82) because fewer payload symbols
+  are needed; at others it's exactly double (SF9 → SF10). At SF11 and SF12 low-data-rate optimization switches on. SF12 takes 1318.912 ms per packet, about 13.19 s for ten.
+  <Cite ids="RF-C03 RF-C04 RF-C15" />
+- **If you see something else.** If an error appears instead of a result, check the advanced settings: you
+  may have overridden low-data-rate optimization. If the numbers differ from the fixtures, another input,
+  such as the preamble, header or CRC, isn't at its worked-example value.
+
+## Experiment 2: what the bytes cost
+
+- **Setup.** Reset, then open the advanced settings.
+- **Change one thing.** Switch the explicit header off (implicit header).
+- **Expect.** Payload symbols drop from 43 to 38 and the packet from 56.576 ms to 51.456 ms. Turning CRC off
+  instead gives the same 38 symbols here. The formula counts these as bit terms; the calculator doesn't
+  invent byte positions for them. <Cite ids="RF-C01" />
+- **If you see something else.** At other payload sizes the ceiling step can absorb a small change, so
+  removing the header or CRC may not change the symbol count at all. That's the formula rounding to whole
+  symbol blocks, not a bug.
+
+## Experiment 3: an obstruction in the link budget
+
+- **Setup.** Reset: 14 dBm, 2 dBi each end, 1 dB cable loss each end, 115 dB assumed path loss, −120 dBm
+  assumed sensitivity.
+- **Change one thing.** Tick *Add an assumed 25 dB obstruction*.
+- **Expect.** Received power falls from −99 dBm to −124 dBm, and the margin from 21 dB to −4 dB.
+  <Cite ids="RF-C07" />
+- **If you see something else.** If the margin isn't 21 dB before the change, one of the defaults was
+  edited. If you get a different sensitivity from a datasheet, remember it applies only at that chip's
+  stated spreading factor, bandwidth and error criterion.
+
+A negative margin in this model means the *assumed* received power is below the *assumed* sensitivity. It
+doesn't predict whether a real message arrives, and no part of this lab decides what is legal to transmit.
+
+## References
+
+- Claims: <Cite ids="RF-C01 RF-C02 RF-C03 RF-C04 RF-C05 RF-C07 RF-C15 RF-C16" />
+- Sources: <Cite ids="RF-S01 RF-S02" />
+- Code: `src/lib/rf.ts` (pure functions) and `src/fixtures/rf.ts` (versioned fixtures), tested in `tests/rf.test.ts`.

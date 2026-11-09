@@ -20,6 +20,10 @@ What exists today:
   four-node diamond and a MeshCore known-path failure with explicit reset and
   recovery, driven by a pure deterministic model with cited events and a
   no-JavaScript text walkthrough;
+- an **RF sandbox** (Lab A): LoRa airtime for SF7–12 at 125/250/500 kHz from
+  the SX1276 datasheet formula, plus a link budget with an assumed obstruction,
+  using the pure functions in `src/lib/rf.ts` (inputs are validated, never
+  clamped) and static worked examples that need no JavaScript;
 - the **evidence ledger** in `research/`: source registry, claim ledger and
   baselines, rendered on the site's Reference pages;
 - the site shell: navigation, search, a dark field-guide theme (light theme
@@ -29,8 +33,8 @@ The simulated message trace on the home page and in Module 00 is a generic
 **teaching model**, not either protocol's routing. No radio, board or app
 combination has been physically tested for this course.
 
-Not yet written: modules 03–12, the RF calculator, packet inspector, field
-planner, glossary and appendices. See `docs/backlog.md` for carried items.
+Not yet written: modules 03–12, packet inspector, field planner, glossary and
+appendices. See `docs/backlog.md` for carried items.
 
 There is no backend, account, analytics, telemetry, advertising or location
 access. Nothing is sent from the visitor's browser.
@@ -48,7 +52,7 @@ access. Nothing is sent from the visitor's browser.
 |---|---|
 | `npm ci` | Install the exact locked dependencies |
 | `npm run dev` | Start the local dev server at `http://localhost:4321/mesh-radio-academy/` |
-| `npm test` | Run unit tests (`node --test`): routing model, ledger integrity, layer trace, progress storage, lesson schema |
+| `npm test` | Run unit tests (`node --test`): routing model, RF airtime and link budget, ledger integrity, lab wiring, layer trace, progress storage, lesson schema |
 | `npm run check` | Astro and TypeScript diagnostics |
 | `npm run build` | Build the static site to `dist/` under the `/mesh-radio-academy/` base path |
 | `npm run check:links` | After a build, confirm every internal link, asset and `#anchor` in `dist/` resolves under the base path |

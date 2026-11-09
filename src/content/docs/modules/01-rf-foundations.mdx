@@ -94,6 +94,8 @@ synthetic teaching inputs. <Cite ids="RF-C07" />
 - Add 25 dB of extra assumed loss, for a wall of trees say: received becomes −124 dBm and the margin **−4 dB**.
   The model now says the link is below the assumed sensitivity.
 
+Change any of these terms, or add the obstruction, in the [RF sandbox](../../labs/rf-sandbox/).
+
 Where did 115 dB of path loss come from? It is an assumed number. For comparison, the free-space formula
 gives about **91.6 dB** at 915 MHz over 1 km with nothing in the way. <Cite ids="RF-C06" /> Real paths add terrain,
 buildings, foliage and fading on top. A positive margin is a planning signal, not a promise of delivery or range,
@@ -141,6 +143,8 @@ radios ties airtime to these inputs: <Cite ids="RF-C01 RF-C02" />
 
 The same packet at **SF12** (low-data-rate optimization on, which the datasheet requires when a symbol lasts
 over 16 ms) takes **1318.912 ms**, over 23 times longer. <Cite ids="RF-C04 RF-C02" />
+
+You can change each input yourself, one at a time, in the [RF sandbox](../../labs/rf-sandbox/).
 
 Note that 20 *physical* bytes is not a 20-character message. The mesh protocol adds its own header and
 cryptographic bytes before the radio sees them.

@@ -13,6 +13,6 @@ These are known gaps and accepted limitations, each with an owner and the trigge
 | Routing: asymmetric-link fixture and UI (delivery without ACK). | Routing/labs lane | Next routing increment. |
 | Routing: topology presets (two nodes, line, diamond, mobile, sparse). | Routing/labs lane | Next routing increment. |
 | Packet inspector and settings-mismatch bench. | Inspector lane | After the packet layouts are pinned (MC-017, MT-S04). |
-| RF airtime and link-budget calculator. | RF lane | Must reproduce RF-F01–RF-F04 and reject unsupported inputs (RF-C01–RF-C07). |
+| RF sandbox extensions: SF5/6, 62.5 kHz and other chips' formulas (e.g. SX1262/LR1110), and an optional free-space distance estimate. The SF7–12 / 125–500 kHz calculator is done (`src/lib/rf.ts`). | RF lane | Each extension needs its own primary formula source and benchmark before it is enabled. |
 | Field planner, battery estimate, CSV log, capstone export. | Field-workbench lane | Uses RF-C08; 17/20 = 85% PDR sample. |
 | Modules 03–12, glossary, comparison page, lab index, appendices. | Content lane | After this slice's interfaces pass review. |

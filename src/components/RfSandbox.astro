@@ -1,0 +1,503 @@
+---
+import { airtime, linkBudget } from '../lib/rf.ts';
+import { RF_F01, RF_F02, RF_F03, RF_F04 } from '../fixtures/rf.ts';
+
+// Static worked examples from the same functions the controls use; readable without JavaScript.
+const ex = [RF_F01, RF_F02].map((f) => ({ id: f.id, input: f.input, r: airtime(f.input) }));
+const links = [
+  { id: 'RF-F03', r: linkBudget(RF_F03), sens: RF_F03.sensitivityDbm },
+  { id: 'RF-F04', r: linkBudget(RF_F04), sens: RF_F04.sensitivityDbm },
+];
+const ms = (n: number) => n.toFixed(3);
+const db = (n: number) => (n > 0 ? `+${n}` : `${n}`).replace('-', '−');
+const crLabel = (cr: number) => `4/${cr + 4}`;
+---
+
+<section class="rf not-content" data-rf aria-labelledby="rf-title">
+  <h2 id="rf-title">RF sandbox</h2>
+  <p class="rf-note">
+    Synthetic inputs, formula outputs. Nothing here is a range prediction, a measured link or a legal
+    verdict. Airtime follows the SX1276 datasheet formula for SF7–12 at 125, 250 or 500 kHz only.
+  </p>
+
+  <h3>Worked examples</h3>
+  <table class="rf-table">
+    <caption>Airtime fixtures (20 physical-layer bytes, explicit header, CRC on, 8-symbol preamble, CR 4/5)</caption>
+    <thead>
+      <tr><th scope="col">Fixture</th><th scope="col">SF / BW / LDRO</th><th scope="col">Symbol time</th><th scope="col">Payload symbols</th><th scope="col">One packet</th><th scope="col">Rounded up</th><th scope="col">10 packets</th></tr>
+    </thead>
+    <tbody>
+      {ex.map(({ id, input, r }) => (
+        <tr>
+          <th scope="row">{id}</th>
+          <td>SF{input.sf} / {input.bandwidthKHz} kHz / {input.lowDataRateOptimize ? 'on' : 'off'}</td>
+          <td>{ms(r.symbolMs)} ms</td>
+          <td>{r.payloadSymbols}</td>
+          <td>{ms(r.packetMs)} ms</td>
+          <td>{r.roundedUpMs} ms</td>
+          <td>{ms(r.aggregateMs)} ms ({(r.aggregateMs / 1000).toFixed(3)} s)</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+  <table class="rf-table">
+    <caption>Link-budget fixtures (synthetic; sensitivity assumed)</caption>
+    <thead><tr><th scope="col">Fixture</th><th scope="col">Terms (dB)</th><th scope="col">Received</th><th scope="col">Margin vs assumed sensitivity</th></tr></thead>
+    <tbody>
+      {links.map(({ id, r, sens }) => (
+        <tr>
+          <th scope="row">{id}</th>
+          <td>{r.terms.map((t) => db(t.db)).join(' ')}</td>
+          <td>{db(r.receivedDbm)} dBm</td>
+          <td>{db(r.marginDb)} dB vs {db(sens)} dBm</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+
+  <noscript><p class="rf-note">The interactive calculator needs JavaScript. The worked examples above use the same formulas.</p></noscript>
+
+  <div class="rf-ui" data-ui hidden>
+    <form data-form novalidate>
+      <fieldset>
+        <legend>Airtime</legend>
+        <div class="rf-grid">
+          <div class="rf-field">
+            <label for="rf-sf">Spreading factor</label>
+            <select id="rf-sf" name="sf" aria-describedby="rf-sf-error">
+              {[7, 8, 9, 10, 11, 12].map((sf) => <option value={sf} selected={sf === 7}>SF{sf}</option>)}
+            </select>
+            <p class="rf-error" id="rf-sf-error" hidden></p>
+          </div>
+          <div class="rf-field">
+            <label for="rf-bandwidthKHz">Bandwidth</label>
+            <select id="rf-bandwidthKHz" name="bandwidthKHz" aria-describedby="rf-bandwidthKHz-error">
+              {[125, 250, 500].map((bw) => <option value={bw} selected={bw === 125}>{bw} kHz ({bw * 1000} Hz)</option>)}
+            </select>
+            <p class="rf-error" id="rf-bandwidthKHz-error" hidden></p>
+          </div>
+          <div class="rf-field">
+            <label for="rf-codingRate">Coding rate</label>
+            <select id="rf-codingRate" name="codingRate" aria-describedby="rf-codingRate-error">
+              {[1, 2, 3, 4].map((cr) => <option value={cr} selected={cr === 1}>{crLabel(cr)} (CR={cr})</option>)}
+            </select>
+            <p class="rf-error" id="rf-codingRate-error" hidden></p>
+          </div>
+          <div class="rf-field">
+            <label for="rf-payloadBytes">Payload (physical bytes, 1–255)</label>
+            <input id="rf-payloadBytes" name="payloadBytes" type="text" inputmode="numeric" value="20" aria-describedby="rf-payloadBytes-hint rf-payloadBytes-error" />
+            <p class="rf-hint" id="rf-payloadBytes-hint">Bytes handed to the radio, including any mesh header and encryption. Not text characters.</p>
+            <p class="rf-error" id="rf-payloadBytes-error" hidden></p>
+          </div>
+          <div class="rf-field">
+            <label for="rf-packetCount">Identical packets (0 or more)</label>
+            <input id="rf-packetCount" name="packetCount" type="text" inputmode="numeric" value="10" aria-describedby="rf-packetCount-error" />
+            <p class="rf-error" id="rf-packetCount-error" hidden></p>
+          </div>
+        </div>
+
+        <details class="rf-advanced">
+          <summary>Advanced: header, CRC, preamble, low-data-rate optimization</summary>
+          <div class="rf-grid">
+            <div class="rf-field rf-check">
+              <input id="rf-explicitHeader" name="explicitHeader" type="checkbox" checked aria-describedby="rf-explicitHeader-error" />
+              <label for="rf-explicitHeader">Explicit header (off = implicit)</label>
+              <p class="rf-error" id="rf-explicitHeader-error" hidden></p>
+            </div>
+            <div class="rf-field rf-check">
+              <input id="rf-crc" name="crc" type="checkbox" checked aria-describedby="rf-crc-error" />
+              <label for="rf-crc">Payload CRC on</label>
+              <p class="rf-error" id="rf-crc-error" hidden></p>
+            </div>
+            <div class="rf-field">
+              <label for="rf-preambleSymbols">Programmed preamble (symbols, 6–65535)</label>
+              <input id="rf-preambleSymbols" name="preambleSymbols" type="text" inputmode="numeric" value="8" aria-describedby="rf-preambleSymbols-error" />
+              <p class="rf-error" id="rf-preambleSymbols-error" hidden></p>
+            </div>
+            <div class="rf-field rf-check">
+              <input id="rf-lowDataRateOptimize" name="lowDataRateOptimize" type="checkbox" aria-describedby="rf-lowDataRateOptimize-note rf-lowDataRateOptimize-error" />
+              <label for="rf-lowDataRateOptimize">Low-data-rate optimization (DE)</label>
+              <p class="rf-hint" id="rf-lowDataRateOptimize-note" data-de-note>Set automatically when you change SF or bandwidth: required when a symbol lasts over 16 ms.</p>
+              <p class="rf-error" id="rf-lowDataRateOptimize-error" hidden></p>
+            </div>
+          </div>
+        </details>
+      </fieldset>
+
+      <fieldset>
+        <legend>Link budget</legend>
+        <div class="rf-grid">
+          {[
+            ['txPowerDbm', 'Transmit power (dBm)', '14'],
+            ['txGainDbi', 'Transmit antenna gain (dBi)', '2'],
+            ['txLossDb', 'Transmit cable loss (dB)', '1'],
+            ['pathLossDb', 'Path loss, assumed (dB)', '115'],
+            ['rxGainDbi', 'Receive antenna gain (dBi)', '2'],
+            ['rxLossDb', 'Receive cable loss (dB)', '1'],
+            ['sensitivityDbm', 'Receiver sensitivity, assumed (dBm)', '-120'],
+          ].map(([id, label, value]) => (
+            <div class="rf-field">
+              <label for={`rf-${id}`}>{label}</label>
+              <input id={`rf-${id}`} name={id} type="text" inputmode="decimal" value={value} aria-describedby={`rf-${id}-error`} />
+              <p class="rf-error" id={`rf-${id}-error`} hidden></p>
+            </div>
+          ))}
+          <div class="rf-field rf-check">
+            <input id="rf-obstruction" name="obstruction" type="checkbox" aria-describedby="rf-obstruction-error" />
+            <label for="rf-obstruction">Add an assumed 25 dB obstruction</label>
+            <p class="rf-error" id="rf-obstruction-error" hidden></p>
+          </div>
+        </div>
+      </fieldset>
+
+      <div class="rf-actions">
+        <button type="button" class="btn" data-reset>Reset to worked examples</button>
+      </div>
+    </form>
+
+    <p class="rf-status" aria-live="polite" data-status></p>
+
+    <div class="rf-results">
+      <section aria-labelledby="rf-air-out">
+        <h3 id="rf-air-out">Airtime result</h3>
+        <p class="rf-summary" data-air-summary></p>
+        <svg class="rf-packet" viewBox="0 0 400 56" role="img" aria-labelledby="rf-packet-title" data-packet>
+          <title id="rf-packet-title" data-packet-title>Packet timeline</title>
+          <rect x="0" y="8" height="28" class="seg-pre" data-seg-pre width="0" />
+          <rect x="0" y="8" height="28" class="seg-data" data-seg-data width="0" />
+          <text x="4" y="52" class="seg-label" data-seg-pre-label></text>
+          <text x="396" y="52" text-anchor="end" class="seg-label" data-seg-data-label></text>
+        </svg>
+        <dl class="rf-out" data-air-out></dl>
+        <p class="rf-hint" data-bits></p>
+      </section>
+      <section aria-labelledby="rf-link-out">
+        <h3 id="rf-link-out">Link-budget result</h3>
+        <p class="rf-summary" data-link-equation></p>
+        <dl class="rf-out" data-link-out></dl>
+        <p class="rf-hint">
+          A positive margin is a planning number under these assumed values, not a promise of range or delivery,
+          and says nothing about whether a power or antenna setting is permitted.
+        </p>
+      </section>
+    </div>
+  </div>
+</section>
+
+<script>
+  import { airtime, linkBudget, requiresLowDataRateOptimize, validateAirtime, validateLinkBudget, type FieldError } from '../lib/rf.ts';
+
+  const AIR = ['sf', 'bandwidthKHz', 'codingRate', 'payloadBytes', 'packetCount', 'preambleSymbols'];
+  const AIR_FLAGS = ['explicitHeader', 'crc', 'lowDataRateOptimize'];
+  const LINK = ['txPowerDbm', 'txGainDbi', 'txLossDb', 'pathLossDb', 'rxGainDbi', 'rxLossDb', 'sensitivityDbm'];
+  const ALL = [...AIR, ...AIR_FLAGS, ...LINK, 'obstruction'];
+
+  // Strict parsing: anything that isn't a plain number becomes NaN and is reported, never coerced.
+  const int = (s: string) => (/^\d+$/.test(s.trim()) ? Number(s) : Number.NaN);
+  const dec = (s: string) => {
+    const t = s.trim().replace('−', '-');
+    return /^-?\d+(\.\d+)?$/.test(t) ? Number(t) : Number.NaN;
+  };
+  const f3 = (n: number) => n.toFixed(3);
+  const sign = (n: number) => (n > 0 ? `+${n}` : `${n}`).replace('-', '−');
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-rf]')) {
+    const form = root.querySelector<HTMLFormElement>('[data-form]')!;
+    const el = <T extends HTMLElement = HTMLInputElement>(name: string) => root.querySelector<T>(`#rf-${name}`)!;
+    const $ = (sel: string) => root.querySelector<HTMLElement>(sel)!;
+    const defaults = new Map(ALL.map((n) => {
+      const e = el(n) as HTMLInputElement;
+      return [n, e.type === 'checkbox' ? String(e.checked) : e.value];
+    }));
+
+    const value = (n: string) => (el(n) as HTMLInputElement | HTMLSelectElement).value;
+    const checked = (n: string) => el(n).checked;
+
+    function showErrors(errors: FieldError[], fields: string[]) {
+      for (const f of fields) {
+        const msg = errors.find((e) => e.field === f)?.message;
+        const slot = $(`#rf-${f}-error`);
+        slot.hidden = !msg;
+        slot.textContent = msg ?? '';
+        el(f).setAttribute('aria-invalid', String(!!msg));
+      }
+    }
+
+    function dl(target: HTMLElement, rows: [string, string][]) {
+      target.replaceChildren(...rows.flatMap(([k, v]) => {
+        const dt = document.createElement('dt');
+        dt.textContent = k;
+        const dd = document.createElement('dd');
+        dd.textContent = v;
+        return [dt, dd];
+      }));
+    }
+
+    function update() {
+      const air = {
+        sf: Number(value('sf')),
+        bandwidthKHz: Number(value('bandwidthKHz')),
+        codingRate: Number(value('codingRate')),
+        payloadBytes: int(value('payloadBytes')),
+        packetCount: int(value('packetCount')),
+        preambleSymbols: int(value('preambleSymbols')),
+        explicitHeader: checked('explicitHeader'),
+        crc: checked('crc'),
+        lowDataRateOptimize: checked('lowDataRateOptimize'),
+      };
+      const link = {
+        ...Object.fromEntries(LINK.map((n) => [n, dec(value(n))])),
+        obstruction: checked('obstruction'),
+      } as Parameters<typeof linkBudget>[0];
+
+      const airErrors = validateAirtime(air);
+      const linkErrors = validateLinkBudget(link);
+      showErrors(airErrors, [...AIR, ...AIR_FLAGS]);
+      showErrors(linkErrors, [...LINK, 'obstruction']);
+
+      if (airErrors.length) {
+        $('[data-air-summary]').textContent = 'Fix the highlighted airtime inputs to see a result.';
+        $('[data-air-out]').replaceChildren();
+        $('[data-bits]').textContent = '';
+        $('[data-packet]').toggleAttribute('hidden', true);
+      } else {
+        const r = airtime(air);
+        $('[data-packet]').toggleAttribute('hidden', false);
+        $('[data-air-summary]').textContent =
+          `SF${air.sf}, ${air.bandwidthKHz} kHz (${r.bandwidthHz} Hz), CR 4/${air.codingRate + 4}, ${air.payloadBytes} B payload, ` +
+          `${air.explicitHeader ? 'explicit' : 'implicit'} header, CRC ${air.crc ? 'on' : 'off'}, ` +
+          `${air.preambleSymbols}-symbol preamble, LDRO ${air.lowDataRateOptimize ? 'on' : 'off'}.`;
+        dl($('[data-air-out]'), [
+          ['Symbol time', `${f3(r.symbolMs)} ms`],
+          ['Preamble', `${r.preambleSymbolsTotal} symbols = ${f3(r.preambleMs)} ms`],
+          ['Payload symbols', `${r.payloadSymbols} symbols = ${f3(r.payloadMs)} ms`],
+          ['One packet', `${f3(r.packetMs)} ms (rounded up: ${r.roundedUpMs} ms)`],
+          [`${air.packetCount} identical packets`, `${f3(r.aggregateMs)} ms = ${(r.aggregateMs / 1000).toFixed(3)} s`],
+        ]);
+        const b = r.bitTerms;
+        $('[data-bits]').textContent =
+          `Inside the payload-symbol formula: ${b.payload} payload bits, ${b.crc} CRC bits, ${b.header} header term, ` +
+          `${b.sfAndFixed} for SF and fixed terms. These are formula terms, not byte positions in a real packet. ` +
+          `Transmit time only: no gaps, channel waiting, ACKs, relays or retries unless you count them as packets.`;
+        const preW = (400 * r.preambleMs) / r.packetMs;
+        $('[data-seg-pre]').setAttribute('width', String(preW));
+        const data = $('[data-seg-data]');
+        data.setAttribute('x', String(preW));
+        data.setAttribute('width', String(400 - preW));
+        $('[data-seg-pre-label]').textContent = `preamble ${f3(r.preambleMs)} ms`;
+        $('[data-seg-data-label]').textContent = `header + payload + CRC ${f3(r.payloadMs)} ms`;
+        $('[data-packet-title]').textContent =
+          `Packet timeline: preamble ${f3(r.preambleMs)} ms, then header, payload and CRC symbols ${f3(r.payloadMs)} ms, total ${f3(r.packetMs)} ms.`;
+      }
+
+      if (linkErrors.length) {
+        $('[data-link-equation]').textContent = 'Fix the highlighted link-budget inputs to see a result.';
+        $('[data-link-out]').replaceChildren();
+      } else {
+        const r = linkBudget(link);
+        $('[data-link-equation]').textContent =
+          `${r.terms.map((t) => `${sign(t.db)} (${t.label.toLowerCase()})`).join(' ')} = ${sign(r.receivedDbm)} dBm`;
+        dl($('[data-link-out]'), [
+          ['Total path loss used', `${r.totalPathLossDb} dB`],
+          ['Received power', `${sign(r.receivedDbm)} dBm`],
+          ['Margin vs assumed sensitivity', `${sign(r.receivedDbm)} − (${sign(link.sensitivityDbm)}) = ${sign(r.marginDb)} dB`],
+        ]);
+      }
+
+      const n = airErrors.length + linkErrors.length;
+      $('[data-status]').textContent = n ? `${n} input${n === 1 ? '' : 's'} need fixing.` : '';
+    }
+
+    function syncDe() {
+      const sf = Number(value('sf'));
+      const bw = Number(value('bandwidthKHz'));
+      const on = requiresLowDataRateOptimize(sf, bw);
+      el('lowDataRateOptimize').checked = on;
+      $('[data-de-note]').textContent =
+        `Set ${on ? 'on' : 'off'} automatically: at SF${sf} and ${bw} kHz a symbol lasts ${f3(2 ** sf / bw)} ms, ` +
+        `${on ? 'over' : 'not over'} the 16 ms limit for this reference.`;
+    }
+
+    form.addEventListener('input', update);
+    form.addEventListener('change', (e) => {
+      const name = (e.target as HTMLInputElement).name;
+      if (name === 'sf' || name === 'bandwidthKHz') syncDe();
+      update();
+    });
+    form.addEventListener('submit', (e) => e.preventDefault());
+    $('[data-reset]').addEventListener('click', () => {
+      for (const [n, v] of defaults) {
+        const e = el(n) as HTMLInputElement;
+        if (e.type === 'checkbox') e.checked = v === 'true';
+        else e.value = v;
+      }
+      syncDe();
+      update();
+      $('[data-status]').textContent = 'Reset to the worked-example values.';
+    });
+
+    syncDe();
+    update();
+    $('[data-ui]').hidden = false;
+  }
+</script>
+
+<style>
+  .rf-note,
+  .rf-hint {
+    color: var(--sl-color-gray-3);
+    max-width: 66ch;
+  }
+  .rf-hint {
+    font-size: var(--sl-text-sm);
+    margin: 0.25rem 0 0;
+  }
+  .rf-ui[hidden] {
+    display: none;
+  }
+  .rf-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+    margin-block: 1rem;
+    display: block;
+    overflow-x: auto;
+  }
+  .rf-table caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.5rem;
+  }
+  .rf-table th,
+  .rf-table td {
+    text-align: start;
+    padding: 0.35rem 0.75rem 0.35rem 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    font-variant-numeric: tabular-nums;
+  }
+  fieldset {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    padding: 0.5rem 1rem 1rem;
+    margin: 1.25rem 0 0;
+    min-width: 0;
+  }
+  legend {
+    padding-inline: 0.25rem;
+    font-weight: 600;
+  }
+  .rf-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 15rem), 1fr));
+    gap: 0.75rem 1.5rem;
+  }
+  .rf-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+  .rf-field label {
+    font-size: var(--sl-text-sm);
+  }
+  .rf-field input[type='text'],
+  .rf-field select {
+    min-height: 2.75rem;
+    font: inherit;
+    color: var(--sl-color-white);
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+  .rf-field [aria-invalid='true'] {
+    border-color: var(--sl-color-accent);
+    border-width: 2px;
+  }
+  .rf-check {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    min-height: 2.75rem;
+  }
+  .rf-check input {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--sl-color-accent);
+  }
+  .rf-check .rf-hint,
+  .rf-check .rf-error {
+    flex-basis: 100%;
+  }
+  .rf-error {
+    margin: 0;
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-accent-high);
+    font-weight: 600;
+  }
+  .rf-error::before {
+    content: '⚠ ';
+  }
+  .rf-advanced {
+    margin-top: 1rem;
+  }
+  .rf-advanced summary {
+    cursor: pointer;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+    font-weight: 600;
+  }
+  .rf-actions {
+    margin-top: 1rem;
+  }
+  .rf-status {
+    min-height: 1.5rem;
+    color: var(--sl-color-gray-2);
+  }
+  .rf-results {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    gap: 1.5rem;
+  }
+  .rf-results h3 {
+    font-size: var(--sl-text-lg);
+    margin-top: 0;
+  }
+  .rf-summary {
+    max-width: 66ch;
+  }
+  .rf-out {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 0.25rem 1rem;
+    margin: 0.75rem 0;
+  }
+  .rf-out dt {
+    color: var(--sl-color-gray-3);
+  }
+  .rf-out dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .rf-packet[hidden] {
+    display: none;
+  }
+  .rf-packet {
+    width: 100%;
+    height: auto;
+    font-family: var(--__sl-font);
+  }
+  .seg-pre {
+    fill: var(--sl-color-gray-5);
+    stroke: var(--sl-color-gray-2);
+    stroke-dasharray: 4 3;
+  }
+  .seg-data {
+    fill: var(--sl-color-accent-low);
+    stroke: var(--sl-color-accent);
+  }
+  .seg-label {
+    font-size: 12px;
+    fill: var(--sl-color-gray-2);
+  }
+</style>
