@@ -771,146 +771,151 @@ const RUBRIC: [string, number, string][] = [
   }
 </script>
 
-<style>
-  .fw-note,
-  .fw-hint {
+<!--
+  Global, but every selector is anchored under this component's .fw root: the script builds the live
+  schematic, planner controls and log rows with createElement/createElementNS, which never receive
+  Astro's scope class, so scoped rules would silently miss them (Lab D quality review, finding Q01).
+-->
+<style is:global>
+  .fw .fw-note,
+  .fw .fw-hint {
     color: var(--sl-color-gray-3);
     max-width: 70ch;
   }
-  .fw-hint {
+  .fw .fw-hint {
     font-size: var(--sl-text-sm);
   }
-  .fw-ui[hidden] {
+  .fw .fw-ui[hidden] {
     display: none;
   }
-  .fw-scroll {
+  .fw .fw-scroll {
     max-width: 100%;
     overflow-x: auto;
     margin-block: 1rem;
   }
-  .fw-scroll:focus-visible {
+  .fw .fw-scroll:focus-visible {
     outline: 3px solid var(--mra-focus);
     outline-offset: 2px;
   }
-  .fw-table {
+  .fw .fw-table {
     width: 100%;
     border-collapse: collapse;
     font-size: var(--sl-text-sm);
   }
-  .fw-table caption {
+  .fw .fw-table caption {
     text-align: start;
     font-weight: 600;
     padding-block: 0.5rem;
   }
-  .fw-table th,
-  .fw-table td {
+  .fw .fw-table th,
+  .fw .fw-table td {
     text-align: start;
     vertical-align: top;
     padding: 0.35rem 0.75rem 0.35rem 0;
     border-bottom: 1px solid var(--sl-color-gray-5);
     font-variant-numeric: tabular-nums;
   }
-  .fw-figure {
+  .fw .fw-figure {
     margin: 1rem 0;
   }
-  .fw-schematic {
+  .fw .fw-schematic {
     width: 100%;
     max-width: 34rem;
     height: auto;
     display: block;
     font-family: var(--__sl-font);
   }
-  .ln {
+  .fw .ln {
     stroke: var(--sl-color-gray-2);
     stroke-width: 3;
   }
-  .ln-partly-obstructed {
+  .fw .ln-partly-obstructed {
     stroke-dasharray: 12 6;
   }
-  .ln-obstructed {
+  .fw .ln-obstructed {
     stroke-dasharray: 2 6;
     stroke: var(--sl-color-gray-4);
   }
-  .ln-unknown {
+  .fw .ln-unknown {
     stroke-dasharray: 10 4 2 4;
     stroke: var(--sl-color-gray-3);
   }
-  .nd {
+  .fw .nd {
     fill: var(--sl-color-gray-6);
     stroke: var(--sl-color-gray-2);
     stroke-width: 2;
   }
-  .nd-relay {
+  .fw .nd-relay {
     stroke: var(--sl-color-accent);
     stroke-width: 4;
   }
-  .nd-endpoint-that-relays {
+  .fw .nd-endpoint-that-relays {
     stroke: var(--sl-color-accent);
     stroke-dasharray: 4 3;
     stroke-width: 3;
   }
-  .nd-id {
+  .fw .nd-id {
     fill: var(--sl-color-white);
     font-size: 17px;
     font-weight: 700;
   }
-  .nd-role {
+  .fw .nd-role {
     fill: var(--sl-color-gray-3);
     font-size: 12px;
   }
-  .fw-desc li,
-  .fw-check li {
+  .fw .fw-desc li,
+  .fw .fw-check li {
     margin-block: 0.3rem;
   }
-  .fw-details summary {
+  .fw .fw-details summary {
     cursor: pointer;
     font-weight: 600;
     min-height: 2.75rem;
     display: flex;
     align-items: center;
   }
-  .fw-dl {
+  .fw .fw-dl {
     display: grid;
     grid-template-columns: minmax(8rem, auto) 1fr;
     gap: 0.35rem 1rem;
   }
-  .fw-dl dt {
+  .fw .fw-dl dt {
     color: var(--sl-color-gray-3);
   }
-  .fw-dl dd {
+  .fw .fw-dl dd {
     margin: 0;
   }
-  .fw-panel {
+  .fw .fw-panel {
     border-top: 1px solid var(--sl-color-gray-5);
     margin-top: 2rem;
     padding-top: 0.5rem;
   }
-  .fw-grid {
+  .fw .fw-grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
     gap: 0.75rem 1.25rem;
   }
-  .fw-fieldset {
+  .fw .fw-fieldset {
     border: 1px solid var(--sl-color-gray-5);
     border-radius: 0.25rem;
     padding: 0.5rem 1rem 1rem;
     margin: 1rem 0 0;
     min-width: 0;
   }
-  .fw-fieldset legend {
+  .fw .fw-fieldset legend {
     font-weight: 600;
     padding-inline: 0.25rem;
   }
-  .fw-field {
+  .fw .fw-field {
     display: flex;
     flex-direction: column;
     gap: 0.25rem;
     min-width: 0;
   }
-  .fw-wide {
+  .fw .fw-wide {
     margin-top: 1rem;
   }
-  .fw-field label {
+  .fw .fw-field label {
     font-size: var(--sl-text-sm);
   }
   .fw input[type='text'],
@@ -933,7 +938,7 @@ const RUBRIC: [string, number, string][] = [
     border-color: var(--sl-color-accent);
     border-width: 2px;
   }
-  .fw-check {
+  .fw .fw-check {
     flex-direction: row;
     align-items: center;
     min-height: 2.75rem;
@@ -944,36 +949,36 @@ const RUBRIC: [string, number, string][] = [
     height: 1.25rem;
     accent-color: var(--sl-color-accent);
   }
-  .fw-inline {
+  .fw .fw-inline {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     min-height: 2.75rem;
   }
-  .fw-error {
+  .fw .fw-error {
     margin: 0;
     font-size: var(--sl-text-sm);
     color: var(--sl-color-accent-high);
     font-weight: 600;
   }
-  .fw-error::before {
+  .fw .fw-error::before {
     content: '⚠ ';
   }
-  .fw-errors {
+  .fw .fw-errors {
     color: var(--sl-color-accent-high);
   }
-  .fw-row {
+  .fw .fw-row {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
     margin-block: 1rem;
     grid-column: 1 / -1;
   }
-  .fw-status {
+  .fw .fw-status {
     color: var(--sl-color-gray-2);
     margin-block: 0.75rem;
   }
-  .fw-preview {
+  .fw .fw-preview {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     font-size: var(--sl-text-sm);
@@ -985,18 +990,18 @@ const RUBRIC: [string, number, string][] = [
   }
 
   @media print {
-    .fw-noprint,
+    .fw .fw-noprint,
     .fw .btn,
-    .fw-status {
+    .fw .fw-status {
       display: none !important;
     }
-    .fw-preview {
+    .fw .fw-preview {
       max-height: none;
       overflow: visible;
       background: none;
       color: #000;
     }
-    .fw-scroll {
+    .fw .fw-scroll {
       overflow: visible;
     }
   }
