@@ -1,0 +1,76 @@
+---
+title: Packet inspector and mismatch bench
+description: Read synthetic Meshtastic and MeshCore packets over the air, on the phone link and in the app, then break one setting at a time and see which stage stops.
+---
+
+import PacketInspector from '../../../components/PacketInspector.astro';
+import MismatchBench from '../../../components/MismatchBench.astro';
+import Cite from '../../../components/Cite.astro';
+
+A radio message exists in at least three forms: the frame on the air, the frames between a phone and its
+radio, and what the app finally shows. This lab lets you look at each form for a few small, invented
+packets, then use a bench to see where a message stops when one setting is wrong. <Cite ids="LW-C03 MC-018" />
+
+Nothing here is a capture from a real radio, and none of the packets is a valid, decryptable frame. Byte
+offsets are shown only where the course read the pinned firmware layout: Meshtastic 2.7.26 and MeshCore
+1.18.0. Everything else is labeled as a schematic. Evidence marked *pending* is a new claim from this lab
+that is waiting to be added to the claims ledger.
+
+<PacketInspector />
+
+## Experiment 1: what a relay can and cannot read
+
+- **Setup.** Packet: “MeshCore DM, direct via B (as A transmits)”. View: Over the air.
+- **Change one thing.** Switch the packet to “MeshCore DM, as B forwards it”.
+- **Expect.** `path_len` drops from `0x01` to `0x00`, the path byte `b2` disappears, and the destination
+  hash moves from offset 3 to offset 2. The ciphertext is still unreadable to B: it forwards by the path,
+  not by reading the message. <Cite ids="MC-009 MC-014 MC-017" />
+- **If you see something else.** Check you are on the over-the-air view. The phone view of the same
+  message has no path at all: the app names the contact by a 6-byte key prefix and lets the radio do the
+  routing. <Cite ids="MC-018" />
+
+## Experiment 2: the same message, three forms
+
+- **Setup.** Packet: “Meshtastic DM with next hop B”.
+- **Change one thing.** Step through Over the air, Phone ↔ radio and Application.
+- **Expect.** The air view has a 16-byte header with the destination, sender, packet ID, flags and one byte
+  naming the preferred relay, then an encrypted body. The phone view is a protobuf inside a 4-byte stream
+  header whose length is big-endian. The application view separates “relayed” (an implicit ACK) from
+  “acknowledged” (D’s routing ACK). Neither is a human reply. <Cite ids="MT-C10 MT-C13 MT-C14" />
+- **If you see something else.** The Meshtastic header’s 4-byte fields carry no byte-order label on
+  purpose: the source copies a C struct and does not state an order, so this lab does not claim one.
+
+## Experiment 3: not every MeshCore message uses a channel key
+
+- **Setup.** Compare “MeshCore DM, direct via B” with “MeshCore group (channel) text”.
+- **Change one thing.** Only the packet.
+- **Expect.** The DM carries one-byte destination and source hashes and is encrypted with a secret derived
+  from the two peers’ identities. The group post carries a one-byte channel hash instead and is readable by
+  every holder of the channel key, who can also claim any sender name. <Cite ids="MC-019 MC-020 MC-021" />
+
+<MismatchBench />
+
+## Experiment 4: one change at a time
+
+- **Setup.** Bench: Meshtastic, Direct message, Known-good baseline.
+- **Change one thing.** Pick each single change in turn and read where the table first turns to “no” or
+  “not established”.
+- **Expect.** The failures are not all the same. A different native protocol may share the RF channel but
+  fails at the protocol stage. <Cite ids="LW-C02 LW-C04" /> A different preset fails at the frame. A
+  renamed Meshtastic primary channel *may* retune the radio, so the result is “not established”.
+  <Cite ids="MT-C16" /> A wrong channel key is heard and parsed but not decrypted, and a DM is unaffected.
+  A stale stored path fails silently in MeshCore but recovers through the final-retry flood in a
+  Meshtastic DM. <Cite ids="MC-011 MT-C11" /> A one-way link delivers to D while A never gets an ACK.
+- **If you see something else.** Make sure only one change is selected; the bench refuses combined changes.
+  “Yes” means the lossless model got that far, not that a real radio is guaranteed to. <Cite ids="RF-C12" />
+
+## Experiment 5: what the sender can know
+
+- **Setup.** Bench: MeshCore, Direct message.
+- **Change one thing.** Compare “Missing repeater”, “Stale or failed stored path” and “Heard, but no
+  end-to-end confirmation”.
+- **Expect.** In all three, A sees the same thing: no confirmation. Only the trace shows that in the last
+  case D actually displayed the message. A missing ACK is not proof the message was lost.
+  <Cite ids="MC-030" />
+
+The [routing playground](../routing-playground/) runs the same model step by step.

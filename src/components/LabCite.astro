@@ -1,0 +1,29 @@
+---
+/**
+ * Evidence links for lab components. Ledger IDs link like Cite.astro; RT-X IDs are
+ * pending routing-lane claims (ops/lanes/routing-inspector/pending-claims.md) with no
+ * ledger anchor yet, so they render as marked text instead of a broken link.
+ */
+interface Props {
+  ids: string[];
+}
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const href = (id: string) => `${base}reference/${/-S\d+$/.test(id) ? 'sources' : 'claims'}/#${id.toLowerCase()}`;
+---
+
+<span class="cite">[{Astro.props.ids.map((id, i) => (
+  <>{i > 0 && ', '}{id.startsWith('RT-X') ? <abbr title="Pending claim: awaiting ledger integration">{id}</abbr> : <a href={href(id)}>{id}</a>}</>
+))}]</span>
+
+<style>
+  .cite {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .cite a {
+    color: inherit;
+  }
+  abbr {
+    text-decoration: underline dotted;
+  }
+</style>

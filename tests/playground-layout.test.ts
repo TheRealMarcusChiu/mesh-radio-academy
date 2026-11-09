@@ -1,38 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { PRESETS, VIEWBOX, LABEL_DY, labelY } from '../src/fixtures/routing-presets.ts';
 
-// Source/layout guard, not a browser test: computes conservative text boxes for the
-// graph's role and status labels from the component's own coordinates and checks
-// they sit inside the SVG viewBox (Q-SLICE-01).
+// Source/layout guard, not a browser test: computes conservative text boxes for every
+// preset graph's role and status labels and checks they sit inside the SVG viewBox
+// (Q-SLICE-01, extended to all presets). The component must draw with these constants.
 const src = readFileSync('src/components/RoutingPlayground.astro', 'utf8');
+const fontPx = (cls: string) => +src.match(new RegExp(`\\.${cls} \\{\\s*font-size: (\\d+)px`))![1];
 
-test('routing graph role and status labels fit inside the SVG viewBox', () => {
-  const [vx, vy, vw, vh] = src.match(/<svg viewBox="([-\d.]+) ([-\d.]+) ([-\d.]+) ([-\d.]+)" class="pg-graph"/)!.slice(1).map(Number);
-  const pos = Object.fromEntries(
-    [...src.match(/const pos[^=]*= \{([^}]*)\}/)![1].matchAll(/([A-D]): \[(\d+), (\d+)\]/g)].map((m) => [m[1], [+m[2], +m[3]]]),
-  );
-  assert.deepEqual(Object.keys(pos).sort(), ['A', 'B', 'C', 'D']);
+test('the playground draws every preset with the shared viewBox and label offsets', () => {
+  assert.match(src, /viewBox=\{VIEWBOX\.join\(' '\)\}/);
+  assert.match(src, /labelY\(p, id, 'role'\)/);
+  assert.match(src, /labelY\(p, id, 'status'\)/);
+  assert.deepEqual(VIEWBOX, [0, -20, 400, 304], 'diamond padding from Q-SLICE-01 kept');
+  assert.deepEqual(LABEL_DY, { role: { above: -30, below: 40 }, status: { above: -44, below: 54 } });
+});
 
-  const label = (cls: string) => {
-    const m = src.match(new RegExp(`y=\\{y \\+ \\(id === 'C' \\? (-?\\d+) : (-?\\d+)\\)\\} text-anchor="middle" class="${cls}"`))!;
-    return { c: +m[1], other: +m[2] };
-  };
-  const fontPx = (cls: string) => +src.match(new RegExp(`\\.${cls} \\{\\s*font-size: (\\d+)px`))![1];
-
-  for (const cls of ['node-role', 'node-status']) {
-    const off = label(cls);
-    const size = fontPx(cls);
-    for (const [id, [x, y]] of Object.entries(pos) as [string, [number, number]][]) {
-      const base = y + (id === 'C' ? off.c : off.other);
-      // Conservative glyph box: full font size above the baseline, 30% below.
-      const top = base - size;
-      const bottom = base + size * 0.3;
-      assert.ok(top >= vy, `${id} ${cls} top ${top} above viewBox ${vy}`);
-      assert.ok(bottom <= vy + vh, `${id} ${cls} bottom ${bottom} below viewBox ${vy + vh}`);
-      // Widest status ("learned path", "ACK matched") must not run off the sides either.
-      const halfWidth = (size * 0.6 * 12) / 2;
-      assert.ok(x - halfWidth >= vx && x + halfWidth <= vx + vw, `${id} ${cls} overflows horizontally`);
+test('role and status labels of every preset fit inside the SVG viewBox', () => {
+  const [vx, vy, vw, vh] = VIEWBOX;
+  for (const p of PRESETS) {
+    for (const cls of ['role', 'status'] as const) {
+      const size = fontPx(`node-${cls}`);
+      for (const [id, [x]] of Object.entries(p.pos)) {
+        const base = labelY(p, id, cls);
+        // Conservative glyph box: full font size above the baseline, 30% below.
+        assert.ok(base - size >= vy, `${p.id} ${id} ${cls} top above viewBox`);
+        assert.ok(base + size * 0.3 <= vy + vh, `${p.id} ${id} ${cls} bottom below viewBox`);
+        // Widest status ("learned path", "ACK matched", "implicit ACK") must not run off the sides.
+        const halfWidth = (size * 0.6 * 12) / 2;
+        assert.ok(x - halfWidth >= vx && x + halfWidth <= vx + vw, `${p.id} ${id} ${cls} overflows horizontally`);
+      }
     }
   }
+});
+
+test('diamond keeps C’s labels below and the others above, as accepted in Q-SLICE-01', () => {
+  const d = PRESETS.find((p) => p.id === 'diamond')!;
+  assert.equal(labelY(d, 'C', 'role'), 214 + 40);
+  assert.equal(labelY(d, 'B', 'status'), 46 - 44);
 });

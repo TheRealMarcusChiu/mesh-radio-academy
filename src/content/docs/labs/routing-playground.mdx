@@ -1,64 +1,108 @@
 ---
 title: Routing playground
-description: Step through Meshtastic managed flooding and MeshCore known-path forwarding on the same four-node graph, with every decision explained and cited.
+description: Step through Meshtastic managed flooding and DM next-hop fallback and MeshCore flooded discovery and direct paths on the same small graphs, with every decision explained and cited.
 ---
 
 import RoutingPlayground from '../../../components/RoutingPlayground.astro';
 import Cite from '../../../components/Cite.astro';
 
-This lab puts two forwarding schemes on one small graph: A can hear B and C, B and C can hear D, and A cannot
-hear D directly. Choose a protocol, send, then step through what each node hears and decides. The model
+This lab puts two forwarding schemes on the same small graphs. Pick a topology and a protocol, set which
+links work and in which direction, send, then step through what each node hears and decides. The model
 follows the course's pinned firmware versions, Meshtastic 2.7.26 and MeshCore 1.18.0, for the behaviors
 listed below and leaves out real timing and collisions. <Cite ids="MT-F01 MC-F04" />
+
+All five topologies share the same assumptions: every node uses matching radio settings, every audible
+transmission arrives intact, and a link is simply on or off in each direction. That is a teaching
+simplification, not a range prediction. <Cite ids="RF-C12 RF-C13" /> The mobile topology moves D only
+when you press **Move D**; that is a controlled change you make, not a forecast of where a moving radio
+would be heard.
 
 <RoutingPlayground />
 
 ## Experiment 1: Meshtastic, does a relay wait for the other?
 
-- **Setup.** Meshtastic, all defaults: B and C hear each other, B–D works, seed 3, B and C are `CLIENT`.
-  A sends a channel broadcast with hop limit 1. D is just the node we watch; a broadcast has no single address.
-- **Change one thing.** Untick "B and C can hear each other".
+- **Setup.** Diamond, Meshtastic, channel broadcast. All links on, seed 3, B and C are `CLIENT`, hop limit 1.
+  D is just the node we watch; a broadcast has no single address.
+- **Change one thing.** Set the B–C link to “no link”.
 - **Expect.** With B–C audible, only A and B transmit: C hears B's copy before its own turn and cancels
   its relay. Without B–C, C never hears B, so A, B and C all transmit. Either way D shows the message once and
   doesn't relay it, because its copy arrives with hop limit 0. <Cite ids="MT-C03 MT-C04 MT-C08" />
-- **If you see something else.** Check the tie-order seed. With seed 1, C goes first and B is the one that
+- **If you see something else.** Check the seed: with seed 1, C goes first and B is the one that
   cancels. Setting C to `ROUTER` also changes the result: routers relay in an earlier window and never cancel
   on an overheard copy. <Cite ids="MT-C05 MT-C06" />
 
-## Experiment 2: Meshtastic, no eligible relay
+## Experiment 2: no eligible relay, or a constrained one
 
-- **Setup.** As above.
+- **Setup.** Diamond, Meshtastic broadcast, as above.
 - **Change one thing.** Set both B and C to `CLIENT_MUTE`.
 - **Expect.** Only A transmits. B and C show the message but never relay it, and D receives nothing.
   <Cite ids="MT-C07" />
-- **If you see something else.** If D still receives, one middle node is still a relaying role.
+- **Then.** Switch to the Sparse neighborhood. With hop limit 1, the broadcast stops at C; with 2 it
+  reaches D, two relays away. The hop limit counts relays, not radio links. <Cite ids="MT-C08" />
 
-## Experiment 3: MeshCore, a stored path breaks
+## Experiment 3: Meshtastic DM, saved next hop and fallback
 
-- **Setup.** MeshCore. A already stores the path [b2] to D, and D independently stores [b2] back to A.
-  A and D are companions with repeat off; B and C are repeaters. B–D is broken.
-- **Change one thing.** Press "Send message A → D".
+- **Setup.** Diamond, Meshtastic, Direct message A → D. The starting state comes from the pinned code:
+  A's saved next hop toward D is B, B's is D, and the A–B and B–C links are off. Hop limit 3.
+- **Change one thing.** Send once, then set A–B back to “A ↔ B” and send again.
+- **Expect.** With A–B off, A's first send and first retry name B, so C hears them but is not allowed to
+  relay. The final retransmission drops the preference, clears A's saved next hop and floods; C now relays,
+  D shows the message and its ACK comes back. With A–B on, only B relays, A overhears B (an *implicit* ACK
+  that stops A's retries) and then gets D's real ACK. <Cite ids="MT-C10 MT-C11 MT-C12 MT-C13" />
+- **If you see something else.** Set C to `CLIENT_MUTE` with A–B off: the fallback has no eligible relay
+  and A ends with a local MAX_RETRANSMIT error that does not say which hop failed. The pinned code can also
+  learn a new next hop from relayed ACKs; this model doesn't simulate that learning. <Cite ids="MT-C14" />
+
+## Experiment 4: MeshCore, a stored path breaks
+
+- **Setup.** Diamond, MeshCore. A already stores the path [b2] to D, and D independently stores [b2] back
+  to A. A and D are companions with repeat off; B and C are repeaters. B–D is off.
+- **Change one thing.** Press “Send message A → D”.
 - **Expect.** A sends direct on [b2]. B forwards it, but D cannot hear B. C hears A's packet and does **not**
   forward it, because it isn't the named next relay, even though C could reach D. A gets no confirmation,
   and from A's side that doesn't reveal which hop failed. <Cite ids="MC-009 MC-011 MC-030" />
-- **Then.** Press "Reset A's path to D". This only clears A's stored path; nothing is transmitted.
+- **Then.** Press “Reset A's path to D”. This only clears A's stored path; nothing is transmitted.
   <Cite ids="MC-012" /> Send again: with no stored path the message floods, B and C both repeat it, and D
   receives C's copy. D floods back a PATH carrying [c3] plus the ACK. A stores [c3] and replies with a direct
   path telling D its own route back. A third send goes direct via C and is confirmed. <Cite ids="MC-008" />
-- **If you see something else.** If C is set to "Companion (repeat off)", the recovery flood has no eligible
-  relay to D and A again gets no confirmation. <Cite ids="MC-004" /> If B–D is ticked as working, the first
-  send succeeds through B.
+- **If you see something else.** If C is a companion (repeat off), the recovery flood has no eligible relay
+  to D. <Cite ids="MC-004" /> The Mobile node topology shows the same failure caused by moving D instead.
+
+## Experiment 5: MeshCore first contact
+
+- **Setup.** Diamond, MeshCore, tick “Start as strangers”. Set B–D back on.
+- **Change one thing.** Press Send before anything else, then send adverts.
+- **Expect.** The first Send is refused by A's client: it has no contact for D, so nothing is transmitted.
+  A zero-hop advert from A reaches only B and C. A flooded advert from D crosses the repeaters and adds D
+  to A's contacts, but A's stored path to D stays unknown: an advert is not a route. If only D adverts,
+  A can send, but D cannot read it, because D has no contact for A. Once both have flooded adverts, a Send
+  floods, both sides learn their paths, and the next Send goes direct. <Cite ids="MC-006 MC-007 MC-008 MC-019" />
+- **If you see something else.** Adverts here are buttons you press: the client asks the radio for them.
+  How often a real app or firmware adverts on its own is not modeled.
+
+## Experiment 6: delivered, but not confirmed
+
+- **Setup.** Three-node line, MeshCore, no stored path.
+- **Change one thing.** Set B–D to “B → D only”.
+- **Expect.** D shows the message, but its PATH and ACK cannot get back past B, so A reports no
+  confirmation. “What A can know” and the trace now disagree: only the trace knows D got it.
+  <Cite ids="MC-030" /> In a Meshtastic DM on the same setting, A overhears B and stops retrying on an
+  implicit ACK, but it never receives D's ACK either. <Cite ids="MT-C13" />
 
 ## How to read the counts
 
-- **Radio transmissions:** every packet put on the air, including relays and control packets.
-- **New packets sent by their origin:** first transmissions of a message, PATH or ACK.
+- **Radio transmissions:** every packet put on the air, including relays, retries and control packets.
+- **Transmissions by the packet's origin:** first transmissions plus retries of a message, PATH, ACK or advert.
 - **Relay transmissions:** forwards by a node that didn't originate the packet.
-- **Control transmissions:** MeshCore PATH and ACK packets, a subset of radio transmissions.
+- **Control transmissions:** PATH, ACK and advert packets, a subset of radio transmissions.
+- **Retries:** the same packet ID transmitted again by its origin. A Meshtastic DM can retry twice; a resend
+  after a MeshCore path reset is a *new* message, not a retry. <Cite ids="MT-C12 MC-013" />
 - **Unique app deliveries:** how many times some node's app showed a message for the first time.
-- **Retries:** an origin resending the same packet. Always 0 here; resending after a reset is a *new* message.
-- **ACKs matched** and **sends with no confirmation** count protocol receipts at the sender, which is not
-  the same as a person reading the message.
+- **Relays crossed** (in the state list): relays a delivered copy passed through, not radio links.
+- **ACKs matched** and **sends with no confirmation** count protocol receipts at the sender. A radio
+  ACK is not the same as the recipient's app showing the message, and neither is a person reading it.
+  <Cite ids="MT-C14 MC-030" />
 
-The model computes no airtime. Arbitrary message bytes aren't real packet sizes, so airtime is left out
-until packet layouts are pinned (see [Module 01](../../modules/01-rf-foundations/) for airtime itself).
+The model computes no airtime. Airtime needs real packet sizes and radio settings; the packet sizes in the
+[packet inspector](../packet-inspector/) aren't complete frames, and the airtime calculator lives in
+[Module 01](../../modules/01-rf-foundations/).

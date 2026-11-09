@@ -1,0 +1,210 @@
+---
+import { CHANGES, STAGES, STAGE_LABELS, diagnose, type BenchProtocol, type Traffic } from '../lib/mismatch.ts';
+import LabCite from './LabCite.astro';
+
+const PROTOCOLS: [BenchProtocol, string][] = [['meshtastic', 'Meshtastic'], ['meshcore', 'MeshCore']];
+const TRAFFIC: [Traffic, string][] = [['dm', 'Direct message'], ['channel', 'Channel message']];
+const OUTCOME: Record<string, string> = { yes: 'yes', no: 'no', unknown: 'not established', 'n/a': 'n/a' };
+const combos = PROTOCOLS.flatMap(([p, pl]) => TRAFFIC.map(([t, tl]) => ({ p, t, label: `${pl}, ${tl.toLowerCase()}` })));
+---
+
+<section class="mb not-content" data-bench aria-labelledby="mb-title">
+  <h2 id="mb-title">Settings mismatch bench</h2>
+  <p class="mb-note">
+    Start from a working A → B → D setup and change exactly one thing. Each stage is judged separately:
+    hearing a signal, decoding the LoRa frame, parsing the native protocol, decrypting, showing it in D’s
+    app, and A receiving an ACK. Routing outcomes come from the same model as the routing playground.
+  </p>
+
+  <div class="mb-ui" data-ui hidden>
+    <div class="mb-controls">
+      <fieldset>
+        <legend>Protocol</legend>
+        {PROTOCOLS.map(([v, l], i) => <label><input type="radio" name="mb-protocol" value={v} checked={i === 0} /> {l}</label>)}
+      </fieldset>
+      <fieldset>
+        <legend>Traffic</legend>
+        {TRAFFIC.map(([v, l], i) => <label><input type="radio" name="mb-traffic" value={v} checked={i === 0} /> {l}</label>)}
+      </fieldset>
+      <fieldset>
+        <legend>One change</legend>
+        {CHANGES.map((c, i) => <label><input type="radio" name="mb-change" value={c.id} checked={i === 0} /> {c.label}</label>)}
+      </fieldset>
+    </div>
+
+    {combos.map(({ p, t }) =>
+      CHANGES.map((c) => {
+        const d = diagnose({ protocol: p, traffic: t, change: c.id });
+        return (
+          <section class="mb-result" data-diag={`${p}:${t}:${c.id}`} hidden>
+            <h3>{c.label}</h3>
+            <dl>
+              <dt>Setup</dt><dd>{c.setup}</dd>
+              <dt>Change</dt><dd>{c.change}</dd>
+              <dt>Expect</dt><dd>{c.expected}</dd>
+            </dl>
+            <table>
+              <caption>Stage by stage</caption>
+              <tbody>
+                {d.stages.map((s) => (
+                  <tr class={`is-${s.outcome.replace('/', '')}`}>
+                    <th scope="row">{STAGE_LABELS[s.stage]}</th>
+                    <td class="mb-outcome">{OUTCOME[s.outcome]}</td>
+                    <td>{s.why} <LabCite ids={s.claims} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p><strong>What A can see:</strong> {d.senderSees}</p>
+            <p><strong>Why this differs from the baseline:</strong> {d.explain}</p>
+          </section>
+        );
+      }),
+    )}
+    <p class="visually-hidden" aria-live="polite" data-live></p>
+  </div>
+
+  <details class="mb-static" data-static>
+    <summary>All results as tables (no JavaScript needed)</summary>
+    {combos.map(({ p, t, label }) => (
+      <div class="mb-scroll" tabindex="0" role="region" aria-label={label}>
+        <table>
+          <caption>{label}</caption>
+          <thead>
+            <tr><th scope="col">Change</th>{STAGES.map((s) => <th scope="col">{STAGE_LABELS[s]}</th>)}</tr>
+          </thead>
+          <tbody>
+            {CHANGES.map((c) => (
+              <tr>
+                <th scope="row">{c.label}</th>
+                {diagnose({ protocol: p, traffic: t, change: c.id }).stages.map((s) => <td>{OUTCOME[s.outcome]}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    ))}
+  </details>
+</section>
+
+<script>
+  for (const root of document.querySelectorAll<HTMLElement>('[data-bench]')) {
+    const value = (name: string) => root.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)!.value;
+    const show = () => {
+      const key = `${value('mb-protocol')}:${value('mb-traffic')}:${value('mb-change')}`;
+      for (const s of root.querySelectorAll<HTMLElement>('[data-diag]')) {
+        s.hidden = s.dataset.diag !== key;
+        if (!s.hidden) root.querySelector('[data-live]')!.textContent = `${s.querySelector('h3')!.textContent}. ${s.querySelector('p')!.textContent}`;
+      }
+    };
+    for (const r of root.querySelectorAll('input[type="radio"]')) r.addEventListener('change', show);
+    show();
+    root.querySelector<HTMLElement>('[data-ui]')!.hidden = false;
+  }
+</script>
+
+<style>
+  .mb {
+    margin-block: 1.5rem;
+  }
+  .mb [hidden] {
+    display: none !important;
+  }
+  .mb-note {
+    color: var(--sl-color-gray-3);
+    max-width: 66ch;
+  }
+  .mb-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  fieldset {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    padding: 0.5rem 1rem 0.75rem;
+    margin: 0;
+    flex: 1 1 12rem;
+  }
+  legend {
+    font-weight: 600;
+    padding-inline: 0.25rem;
+  }
+  fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+  }
+  input[type='radio'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex: none;
+    accent-color: var(--sl-color-accent);
+  }
+  .mb-result {
+    margin-top: 1rem;
+  }
+  dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.25rem 1rem;
+  }
+  dt {
+    font-weight: 600;
+  }
+  dd {
+    margin: 0;
+  }
+  table {
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+  }
+  caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.25rem;
+  }
+  th,
+  td {
+    text-align: start;
+    vertical-align: top;
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+  .mb-outcome {
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  tr.is-no .mb-outcome::before {
+    content: '✗ ';
+  }
+  tr.is-yes .mb-outcome::before {
+    content: '✓ ';
+  }
+  tr.is-unknown .mb-outcome::before {
+    content: '? ';
+  }
+  .mb-static {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding-top: 0.75rem;
+  }
+  .mb-static summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .mb-scroll {
+    overflow-x: auto;
+    margin-block: 0.75rem;
+  }
+  .mb-scroll:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+  }
+  .mb-scroll table {
+    min-width: 40rem;
+  }
+</style>
