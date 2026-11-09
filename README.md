@@ -5,12 +5,13 @@ from a first simulated message to a field-tested neighborhood mesh. It is a
 static site built with [Astro](https://astro.build) and
 [Starlight](https://starlight.astro.build).
 
-Intended address: <https://therealmarcuschiu.github.io/mesh-radio-academy/>
-(the host is provisional until GitHub Pages is configured).
+Site: <https://git.marcuschiu.com/mesh-radio-academy/> (GitHub Pages, built
+and deployed from `main` by the
+[deploy workflow](https://github.com/TheRealMarcusChiu/mesh-radio-academy/actions/workflows/deploy.yml)).
 
-## Status: lessons and all four labs integrated, not yet published
+## Contents: 13 lessons and four labs
 
-Not deployed. What this checkout contains:
+What this repository contains:
 
 - **All 13 modules (00–12)**, each with outcomes, prerequisites, a worked
   example, an original diagram with a text version, a prediction or hands-on

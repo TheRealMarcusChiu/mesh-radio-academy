@@ -2,9 +2,9 @@
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
 
-// Canonical host is provisional until the GitHub Pages API confirms it.
+// Canonical host is the GitHub Pages custom domain; the course lives under `base`.
 export default defineConfig({
-  site: 'https://therealmarcuschiu.github.io',
+  site: 'https://git.marcuschiu.com',
   base: '/mesh-radio-academy',
   trailingSlash: 'always',
   output: 'static',
