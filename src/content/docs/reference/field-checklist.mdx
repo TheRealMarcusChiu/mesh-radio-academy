@@ -1,0 +1,59 @@
+---
+title: Printable field checklist
+description: One-page checklists for a first link, a field test, a node install and a maintenance visit, drawn from Modules 02-12. Print with your browser.
+tableOfContents: false
+---
+
+import Cite from '../../../components/Cite.astro';
+
+Print this page from your browser (it prints without the site navigation in most browsers' reader or print view).
+Every line comes from a lesson; the module number is in brackets. Nothing here replaces your device's manual, your
+regulator's rules or your community's current settings.
+
+## Before any transmission
+
+- [ ] Same protocol on every node you're testing [00]
+- [ ] Board model, revision and band written down; band matches your region [02]
+- [ ] Matching antenna attached **before** power [02] <Cite ids="HW-C09" />
+- [ ] Supported settings backed up **privately**; no channel URL or QR in photos [03] <Cite ids="CUR-C12" />
+- [ ] Exact firmware version and board target; role chosen deliberately [03, 05]
+- [ ] Installed version read from the device [03, 05]
+- [ ] Region set (a Meshtastic node with region unset doesn't transmit) [03] <Cite ids="CUR-C01" />
+- [ ] RF settings from your community's maintained page, with the date checked [10]
+- [ ] Device authorization looked up for your jurisdiction [08] <Cite ids="REG-C06" />
+- [ ] Repeater and room-server admin passwords changed from the default [05] <Cite ids="MC-024" />
+
+## During a field test
+
+- [ ] Test ID, date, time, firmware, boards, roles, modem settings recorded [09]
+- [ ] Location written as a label, never coordinates [09]
+- [ ] RF settings and endpoints fixed; **one** variable changed per repeat [09] <Cite ids="CUR-C23" />
+- [ ] Gentle cadence: a few short messages per minute at most; short first run [12]
+- [ ] Sent count and **recipient-displayed** count recorded; ACKs counted separately [07] <Cite ids="CUR-C22" />
+- [ ] RSSI and SNR from the receiver, marked as measurements [09]
+- [ ] Route notes marked as inference unless read from packet fields [09]
+- [ ] MQTT, downlink and map reporting off unless they're the thing being tested [04]
+
+## After the test
+
+- [ ] PDR written with sample size, each direction separately [07]
+- [ ] Log sanitized: no keys, URLs, coordinates or identifying names [08]
+- [ ] Nodes restored to the recorded baseline [03]
+
+## Installing a node
+
+- [ ] Placement permission from the property owner, including access for maintenance [10]
+- [ ] Community told: where, protocol, role, settings, maintainer [10] <Cite ids="NTX-C05" />
+- [ ] Every conductive path listed; outdoor work to local code by a qualified installer [10] <Cite ids="HW-C10" />
+- [ ] No outdoor work in thunderstorms [10] <Cite ids="HW-S13" />
+- [ ] Charging temperature limits checked for the battery [10] <Cite ids="HW-C05" />
+
+## Maintenance visit
+
+- [ ] Firmware checked against current first-party advisories [08] <Cite ids="MC-032" />
+- [ ] Battery voltage or solar log compared with the budget [10]
+- [ ] Enclosure, seals and cable entries inspected [10]
+- [ ] Admin ACL and access list current [08]
+- [ ] Visit logged with date and findings [10]
+
+The blank test log as a CSV, with these columns, comes from the [field planner](../../labs/field-planner/).

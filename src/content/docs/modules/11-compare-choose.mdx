@@ -1,0 +1,196 @@
+---
+title: 'Module 11: Compare and choose'
+description: Compare Meshtastic and MeshCore across seven scenarios - solo learning, two radios, a moving group, established infrastructure, a sparse rural link, a fixed relay backbone and privacy-sensitive use - and turn scenario inputs into a conditional recommendation.
+lesson:
+  module: '11'
+  outcomes:
+    - Explain why matching hardware and RF settings still don't make the two protocols interoperate.
+    - Compare routing assumptions, ecosystem and client support, telemetry and automation, power and maintenance using documented evidence.
+    - Work through seven scenarios and justify a conditional recommendation from the scenario's inputs.
+    - Say what would change the recommendation, instead of naming a universal winner.
+  estimatedMinutes: 40
+  prerequisites: ['modules/07-reliability-capacity', 'modules/08-privacy-security-rules', 'modules/10-neighborhood-mesh']
+  difficulty: intermediate
+  sourceIds: [LW-C02, LW-C03, LW-C04, HW-C04, HW-C07, HW-C11, MT-C03, MT-C10, MT-C11, MT-C17, MT-C18, MT-C24, MT-C25, MC-001, MC-003, MC-004, MC-008, MC-011, MC-012, MC-022, MC-026, MC-031, MC-032, CUR-C06, CUR-C10, NTX-C01, NTX-C02]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; app and client versions as in the baselines page'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+There is no best mesh protocol, only a better fit for a situation. This module turns everything so far into a
+decision you can defend: name the inputs, say which evidence each one points to, and say what would change your
+mind. The full side-by-side tables live on the [comparison page](../../comparison/); this lesson teaches how to use
+them.
+
+## Goals and prerequisites
+
+You need the airtime counts from [Module 07](../07-reliability-capacity/), the security tables from
+[Module 08](../08-privacy-security-rules/) and the community-first plan from [Module 10](../10-neighborhood-mesh/).
+
+## Same hardware, different worlds
+
+The two-node kit in Module 02 can run either firmware: the same boards have build targets for both. <Cite ids="HW-C11 HW-C04" />
+That makes a fair comparison possible, because differences come from software. <Cite ids="HW-C07" /> It doesn't make
+the two compatible:
+
+- Even with identical frequency, bandwidth, spreading factor and coding rate, framing settings such as the sync word
+  differ, and what one stock radio does with the other's frames is not established. <Cite ids="LW-C04" />
+- Above the radio, the packet formats are different, so neither can read the other's messages natively. <Cite ids="LW-C02" />
+- The apps talk to their nodes with different local protocols too. <Cite ids="LW-C03" />
+
+So the first input to any decision is: **what are the people you want to reach already running?**
+
+## How to decide
+
+<FlowDiagram
+  title="Choosing a protocol from scenario inputs"
+  desc="First ask whether the people or infrastructure you need already use one protocol. If yes, join it. If no, ask whether you can deploy and maintain fixed repeaters. If yes, either fits and MeshCore's planned repeaters are a natural match; if no, Meshtastic's client relaying needs no planning. Then check privacy and automation needs."
+  width={460}
+  height={230}
+  nodes={[
+    { id: 'q1', x: 120, y: 30, label: 'Existing users?', sub: 'in your area' },
+    { id: 'join', x: 360, y: 30, label: 'Join that one', sub: 'check by area' },
+    { id: 'q2', x: 120, y: 120, label: 'Fixed relays?', sub: 'can you maintain' },
+    { id: 'mc', x: 360, y: 120, label: 'Planned relays', sub: 'MeshCore fits' },
+    { id: 'mt', x: 120, y: 205, label: 'Ad-hoc relays', sub: 'Meshtastic fits' },
+    { id: 'q3', x: 360, y: 205, label: 'Then check', sub: 'privacy, scripts', kind: 'note' },
+  ]}
+  edges={[
+    { from: 'q1', to: 'join', label: 'yes', kind: 'wire' },
+    { from: 'q1', to: 'q2', label: 'no', kind: 'wire' },
+    { from: 'q2', to: 'mc', label: 'yes', kind: 'wire' },
+    { from: 'q2', to: 'mt', label: 'no', kind: 'wire' },
+    { from: 'mc', to: 'q3', kind: 'dashed' },
+    { from: 'mt', to: 'q3', kind: 'dashed' },
+  ]}
+  caption="A starting point, not a verdict. Each branch still needs the scenario table below."
+>
+
+1. Do the people or infrastructure you need already use one protocol in your area? If yes, start there.
+2. If not: can you deploy and maintain fixed relays? If yes, MeshCore's dedicated repeaters fit well (Meshtastic
+   works too). If no, Meshtastic's ordinary clients can relay without planning.
+3. Either way, check privacy and automation needs against the comparison tables before committing.
+
+</FlowDiagram>
+
+## What actually differs
+
+| Dimension | Meshtastic 2.7.26 | MeshCore 1.18.0 |
+|---|---|---|
+| Who relays | Ordinary clients can relay; duplicate cancellation trims copies when relays hear each other <Cite ids="MT-C03" /> | Dedicated repeaters; companions don't by default <Cite ids="MC-004" /> |
+| DM routing | Floods first; learns a per-hop next node; final retry floods again <Cite ids="MT-C10 MT-C11" /> | Floods first; learns a full stored path; a broken hop needs an explicit reset <Cite ids="MC-008 MC-011 MC-012" /> |
+| Channel integrity | Channel AES-CTR has no authentication tag <Cite ids="MT-C17" /> | 2-byte truncated HMAC <Cite ids="MC-022" /> |
+| DM crypto | X25519 + AES-256-CCM <Cite ids="MT-C18" /> | Identity-derived secret, AES-128, 2-byte MAC <Cite ids="MC-022" /> |
+| Group history | None in core scope | Room server (operator can read) <Cite ids="MC-026" /> |
+| Telemetry and app data | Many application ports (position, telemetry, traceroute and more) <Cite ids="CUR-C06" /> | Adverts with optional location; repeater stats over console <Cite ids="MC-031" /> |
+| Automation | Python CLI and library; MQTT bridging <Cite ids="MT-C24 CUR-C10" /> | Companion protocol for apps; repeater console <Cite ids="MC-031" /> |
+| Ecosystem | Official apps per platform; app and firmware versions must be checked, not assumed <Cite ids="MT-C25" /> | Firmware lineage and app distribution are separate questions after the 2026 split <Cite ids="MC-001 MC-003" /> |
+| Security maintenance | First-party advisories with affected and fixed versions <Cite ids="MT-S29" /> | Fixes land in the latest release only <Cite ids="MC-032" /> |
+
+## Seven scenarios
+
+Each row gives the inputs that matter, a conditional recommendation and what would change it.
+
+| Scenario | Key inputs | Recommendation | Would change if… |
+|---|---|---|---|
+| **Solo learner, no radios** | No hardware, wants concepts | Neither yet: do the simulations for both, then decide with the local check | A friend nearby already runs one |
+| **Two radios, one pair of people** | Two nodes, direct range | Either. Run Module 03 and Module 05 on the same boards and compare | One person needs automation (lean Meshtastic CLI) or room history (lean MeshCore) |
+| **Moving group** (hikers, event) | Nodes move, no fixed sites, short sessions | Meshtastic: any client can relay as the group spreads out, with no repeater to place | The area already has dense MeshCore repeaters along the route |
+| **Established infrastructure** | A local community runs one protocol with coordinated relays | **Join what's there,** with their settings for your area <Cite ids="NTX-C01 NTX-C02" /> | Never, unless the community itself migrates |
+| **Sparse rural link** | Few nodes, long gaps, someone can host a high site | MeshCore repeater at the high site fits planned links; Meshtastic `CLIENT` relays work if nodes are in place anyway | Nobody can maintain the high site |
+| **Fixed relay backbone** | Several permanent sites, an operator, maintenance budget | MeshCore's dedicated repeaters and stored paths suit planned backbones; Meshtastic `ROUTER` roles also exist and need coordination | The users on the edges already run Meshtastic |
+| **Privacy-sensitive use** | Content and identity matter | Neither is a secure messenger. Prefer DMs over channels on both; on Meshtastic, channel messages aren't integrity-protected. Minimize position and bridges | A threat model shows metadata (who, when, where) is the real risk: then reconsider using radio at all |
+
+## Worked example: a sparse rural link
+
+**Scenario.** Two farmhouses 6 km apart can't hear each other. A grain-elevator owner offers a high site that can
+see both, with mains power, and one farmer will maintain it. Nobody nearby runs either protocol.
+
+1. **Existing users?** None, so step 1 of the decision flow doesn't decide it.
+2. **Fixed relay possible?** Yes: one permitted, powered, maintained high site.
+3. **Evidence for each option.**
+   - MeshCore: a repeater at the elevator; both farmhouses run companions. The first DM floods through the repeater,
+     then each side uses its stored path `[repeater]`. Two transmissions per message plus a direct ACK. <Cite ids="MC-008 MC-009" />
+   - Meshtastic: a `CLIENT` (or, by agreement, `ROUTER_LATE`) at the elevator. Two transmissions per broadcast with
+     hop limit 1; a DM learns a next hop. <Cite ids="MT-C10" />
+4. **Tie-breakers.** Do the farmers want automated sensor logs? That favors Meshtastic's telemetry and CLI. <Cite ids="CUR-C06 MT-C24" />
+   Do they want messages waiting for whoever comes in from the field? A MeshCore room server at the elevator does
+   that, with the farmer as a trusted operator. <Cite ids="MC-026" />
+5. **Recommendation.** Either works on this topology. With no logging need and a wish for stored messages: MeshCore
+   with a repeater and a room server. With logging: Meshtastic.
+6. **What would change it.** A third house appearing that only one farmhouse can hear: a Meshtastic client there
+   relays with no extra setup, while on MeshCore a companion there forwards nothing until someone deploys or
+   reconfigures it as a repeater. <Cite ids="MC-004" />
+
+## Your turn: recommend for a scenario
+
+A volunteer search team of 8 wants to message between a base and moving teams in hilly woodland. One member can
+place a relay on a ridge for a weekend. The local community runs Meshtastic, but nobody uses it near this forest.
+They also want the base laptop to log positions automatically.
+
+Make a recommendation, name the three inputs that decided it, and say what would change it.
+
+<details>
+<summary>Suggested answer</summary>
+
+Meshtastic. Inputs: (1) the local community runs it, so team members may already have nodes and know the app;
+(2) moving teams benefit from any client relaying without planning; (3) the base wants automated position logging,
+which the Python CLI and library can support. <Cite ids="MT-C24 CUR-C06" /> The ridge relay is a coordinated
+infrastructure role for the weekend only. What would change it: a MeshCore repeater network already covering the
+forest, or no need for position logging. Either way this is a supplementary channel with variable delivery, not a
+replacement for the team's primary communications.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. Your neighbor runs MeshCore on the same board and the same frequency as your Meshtastic node. Can you message each other?</summary>
+
+No. Different packet formats and framing; matching RF settings don't change that. <Cite ids="LW-C02 LW-C04" />
+</details>
+
+<details>
+<summary>2. Why is "join what's there" the strongest input?</summary>
+
+Nodes only help each other if they run the same protocol and settings. A technically better choice that nobody
+nearby uses gives you a two-node network.
+</details>
+
+<details>
+<summary>3. Someone says MeshCore is "more reliable" because its routes are stored. What's the trade?</summary>
+
+A stored path is efficient while it's right. When a hop breaks, a different reachable repeater doesn't step in;
+recovery needs a reset and a new flood. <Cite ids="MC-011 MC-012" />
+</details>
+
+<details>
+<summary>4. A group needs messages kept for members who were off air. What fits, and at what cost?</summary>
+
+A MeshCore room server stores recent posts, but its operator can read them and history is a bounded queue. <Cite ids="MC-026" />
+</details>
+
+<details>
+<summary>Deeper dive: comparing fairly on hardware</summary>
+
+Use two identical boards, the same antennas and placements, the same RF settings where both protocols allow them,
+and the same message schedule. Reflash both nodes between runs; reflashing erases identities, so re-exchange contacts
+each time. Report each protocol's PDR with sample size, and label differences in frame size and protocol behavior,
+not just the totals. <Cite ids="HW-C07" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="LW-C02 LW-C03 LW-C04 HW-C04 HW-C07 HW-C11 MT-C03 MT-C10 MT-C11 MT-C17 MT-C18 MT-C24 MT-C25 MC-001 MC-003 MC-004 MC-008 MC-011 MC-012 MC-022 MC-026 MC-031 MC-032 CUR-C06 CUR-C10 NTX-C01 NTX-C02" />
+- Sources: <Cite ids="MC-S02 MC-S03 MT-S29 MC-S20" />
+- See also: [comparison page](../../comparison/), [baselines](../../reference/baselines/), [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 10: Build a neighborhood mesh](../10-neighborhood-mesh/).
+Next: [Module 12: Capstone and operator reference](../12-capstone-operator-reference/). Design, break, fix and
+report on a simulated network.
+
+<ProgressToggle page="modules/11-compare-choose" />

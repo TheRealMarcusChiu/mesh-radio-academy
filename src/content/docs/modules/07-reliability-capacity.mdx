@@ -1,0 +1,222 @@
+---
+title: 'Module 07: Reliability and capacity'
+description: Count relay transmissions and airtime for one message across a chain, a diamond and a sparse neighborhood on both protocols, see what hop limits, adverts, position beacons, ACKs and retries cost, and measure delivery ratio honestly.
+lesson:
+  module: '07'
+  outcomes:
+    - Count the transmissions one channel message causes in a chain, a diamond and a sparse neighborhood, on Meshtastic and MeshCore, under identical RF assumptions.
+    - Convert transmission counts into airtime and explain where hop limits, backoff, adverts, position and node-info beacons, ACKs and retries add to it.
+    - Compute packet delivery ratio with its sample size, keep on-air attempts separate, and compare forward and reverse runs.
+    - Say what a hidden-node problem, less background traffic or a better antenna placement can and cannot be shown to change from a small test.
+  estimatedMinutes: 45
+  prerequisites: ['modules/01-rf-foundations', 'modules/04-meshtastic-under-the-hood', 'modules/06-meshcore-under-the-hood']
+  difficulty: intermediate
+  sourceIds: [CUR-C09, CUR-C17, CUR-C21, CUR-C22, CUR-C23, MT-C03, MT-C05, MT-C06, MT-C08, MT-C12, MT-C13, MC-004, MC-005, MC-010, MC-013, MC-030, RF-C01, RF-C05, RF-C12, RF-C13]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; SX1276 airtime formula at the RF-F01 teaching profile'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+Everyone near you shares one channel. Every relay, beacon, ACK and retry takes a slice of airtime that nobody else
+can use. This module counts those slices and then shows how to measure delivery without fooling yourself. There
+are **no field measurements** here: every number is either a formula result with stated inputs or a synthetic
+example.
+
+## Goals and prerequisites
+
+You need the airtime formula from [Module 01](../01-rf-foundations/) and the forwarding rules from
+[Module 04](../04-meshtastic-under-the-hood/) and [Module 06](../06-meshcore-under-the-hood/). Run the diamond in
+the [routing playground](../../labs/routing-playground/) and check airtime in the
+[RF sandbox](../../labs/rf-sandbox/) as you go.
+
+## Identical assumptions, stated once
+
+To compare fairly, everything that isn't the protocol stays the same:
+
+- **RF:** the course's teaching profile (SF7, 125 kHz, CR 4/5, 8-symbol preamble, explicit header, CRC on). A
+  frame with an assumed 40 physical bytes lasts **82.176 ms**. <Cite ids="CUR-C21 RF-C01" /> Real frames differ in
+  size between protocols and packet types; the shared 40-byte size is an assumption that isolates *counting*.
+- **Traffic:** one channel message from A that every node should see.
+- **No loss, no collisions,** a fixed relay order. Real relay delay is randomized. <Cite ids="MT-C06" />
+- **Meshtastic:** every node `CLIENT`, hop limit as stated. A client relays when hop limit remains and it hasn't
+  heard a duplicate before its turn. <Cite ids="MT-C03 MT-C08" />
+- **MeshCore:** nodes marked R are dedicated repeaters; the rest are companions with repeating off. Each repeater
+  forwards its first copy of a flood once. <Cite ids="MC-004 MC-010" />
+
+What differs is labeled as **protocol behavior**, not as one being "better".
+
+## Three neighborhoods
+
+<FlowDiagram
+  title="Sparse neighborhood topology"
+  desc="A hears only B. B hears A, C and E. C hears B and D. D hears only C. E hears only B. C and E cannot hear each other."
+  width={420}
+  height={190}
+  nodes={[
+    { id: 'a', x: 60, y: 95, label: 'A', sub: 'source' },
+    { id: 'b', x: 170, y: 95, label: 'B', sub: 'R in MeshCore' },
+    { id: 'c', x: 280, y: 40, label: 'C', sub: 'R in MeshCore' },
+    { id: 'd', x: 380, y: 40, label: 'D' },
+    { id: 'e', x: 280, y: 150, label: 'E' },
+  ]}
+  edges={[
+    { from: 'a', to: 'b', kind: 'rf', arrow: false },
+    { from: 'b', to: 'c', kind: 'rf', arrow: false },
+    { from: 'c', to: 'd', kind: 'rf', arrow: false },
+    { from: 'b', to: 'e', kind: 'rf', arrow: false },
+  ]}
+  caption="The sparse neighborhood: a tree, so every message to D must pass B and C. C and E are hidden from each other."
+>
+
+- A–B, B–C, C–D and B–E are the only radio links.
+- C and E can't hear each other, so neither can cancel a relay on hearing the other.
+- In the MeshCore version, B and C are dedicated repeaters; A, D and E are companions.
+
+</FlowDiagram>
+
+The **chain** is A–B–C–D in a line (B and C are repeaters on MeshCore). The **diamond** is Module 04's, with B and C
+able to hear each other (B and C are repeaters on MeshCore).
+
+| Topology | Meshtastic transmissions | MeshCore transmissions | Everyone received? |
+|---|---|---|---|
+| Chain, hop limit 3 | **4**: A, B, C, and D (D receives with one hop left and relays to nobody new) | **3**: A, B, C | Yes, both |
+| Chain, hop limit 2 | **3**: A, B, C | 3 (MeshCore has no per-packet hop limit here) | Yes, both |
+| Diamond, hop limit 1 | **2**: A, B; C cancels on hearing B <Cite ids="MT-C03" /> | **3**: A, B, C; both repeaters forward their first copy | Yes, both |
+| Sparse, hop limit 3 | **5**: A, B, C, E, D (C and E are hidden from each other; D still has budget) | **3**: A, B, C; companion E stays quiet | Yes, both |
+
+Airtime at 82.176 ms per frame:
+
+| Topology | Meshtastic | MeshCore |
+|---|---|---|
+| Chain (hop limit 3) | 328.704 ms | 246.528 ms |
+| Diamond | 164.352 ms | 246.528 ms |
+| Sparse | 410.880 ms | 246.528 ms |
+
+**Read this carefully.** Neither column wins everywhere. Meshtastic's every-client-can-relay design reaches E-like
+corners with no planning and cancels copies when relays hear each other; it spends extra transmissions at the
+edges and where relays are hidden. MeshCore's fixed repeaters send a predictable number of copies, but only where
+someone deployed a repeater: put D one hop past a companion and it gets nothing. These counts are about **one
+message under ideal conditions**, not real capacity.
+
+## Where else the airtime goes
+
+| Source | Meshtastic | MeshCore |
+|---|---|---|
+| Hop budget | Each extra hop of budget lets copies travel one relay farther; edge nodes relay into silence. <Cite ids="MT-C08" /> | Flood scope and hop limits on repeaters bound floods. <Cite ids="MC-005" /> |
+| Backoff | Randomized, SNR-weighted relay delay; `ROUTER` uses an earlier window and skips ordinary cancellation. <Cite ids="MT-C05 MT-C06" /> | Not modeled in the course. |
+| Identity beacons | Node info, schema default every 900 s. <Cite ids="CUR-C09" /> | Repeater flood adverts, default every 47 h. <Cite ids="CUR-C17" /> |
+| Position | Schema default 15 min, only when position changed significantly. <Cite ids="CUR-C09" /> | Optional location inside adverts. |
+| ACKs | Every DM ACK is another relayed packet. | PATH+ACK floods back the first time, then goes direct. |
+| Retries | Up to three attempts per DM from an isolated sender. <Cite ids="MT-C12" /> | App-driven; firmware has no universal retry rule. <Cite ids="MC-013" /> |
+
+**Worked example: background traffic.** Assume 20 Meshtastic nodes in the sparse pattern above, each sending node
+info 4 times an hour and a changed position up to 4 times an hour, each original relayed into 5 transmissions,
+40 bytes each. That's 8 × 5 = 40 frames per node per hour, 40 × 82.176 ms ≈ 3.29 s per node, ≈ 65.7 s across 20
+nodes: about **1.8 %** of every hour spent on beacons before anyone types a message. Every input is an assumption;
+change any one and the result moves in proportion. Halving the beacons halves it.
+
+## Measuring delivery honestly
+
+**Packet delivery ratio (PDR)** = unique messages delivered ÷ messages scheduled, always written with the sample
+size. <Cite ids="CUR-C22" />
+
+A synthetic run: A schedules 20 numbered messages to D, one every 30 s, with fixed RF settings and fixed endpoints.
+
+| Direction | Scheduled | Unique delivered | PDR | On-air attempts (separate) |
+|---|---|---|---|---|
+| A → D | 20 | 17 | **85 % (17/20)** | 31: originals, relays and retries counted at A, B and C |
+| D → A | 20 | 14 | **70 % (14/20)** | 36 |
+
+What you can and can't say:
+
+- At n = 20, one message moves PDR by 5 percentage points, so 85 % versus 70 % is a difference of three messages.
+  That's a hint of asymmetry worth repeating, not a proven property of the link. <Cite ids="CUR-C22" />
+- **Attempts are not in the denominator.** 31 attempts for 17 deliveries describe airtime cost, not delivery.
+- **"Delivered" means the recipient displayed it**, not that the sender saw an ACK. A missing ACK can hide a
+  delivered message. <Cite ids="MC-030 MT-C13" />
+- Write measured counts, RSSI and SNR separately from what you infer (route, cause). <Cite ids="CUR-C23 RF-C12" />
+
+## Hidden nodes, less traffic, better placement
+
+- **Hidden nodes.** Two transmitters that can't hear each other can overlap at a receiver between them, which then
+  decodes neither. The course simulators don't model this collision. <Cite ids="RF-C13" /> In the sparse example,
+  C and E are such a pair for anything around B.
+- **Less background traffic** means fewer chances for overlaps and more free airtime. You can show it changed the
+  beacon count; you can't show it fixed delivery unless delivery is measured before and after under the same
+  conditions.
+- **Better antenna placement** can raise received signal and margin. A before/after test with one change can
+  support "in this run, PDR went from 14/20 to 18/20 after raising the antenna". It can't support "height adds
+  20 %" without many repeats across days, because weather, people and other traffic change too. <Cite ids="CUR-C23" />
+
+## Your turn: change one thing
+
+1. In the Meshtastic chain, what hop limit is the smallest that still reaches D, and how much airtime does it save
+   against hop limit 3?
+2. In the MeshCore sparse neighborhood, E wants to talk to D. What has to change, and what does one channel message
+   then cost?
+
+<details>
+<summary>Answers</summary>
+
+1. Hop limit 2: B and C relay, D receives with none left. 3 transmissions, 246.528 ms, saving one frame
+   (82.176 ms) per message. <Cite ids="MT-C08" />
+2. Nothing new is needed for E's flood to reach D: E's message goes to repeater B, B repeats to C, C repeats to D.
+   E (companion), B and C transmit: 3 frames, 246.528 ms. The constraint is the other way round: a companion that
+   *only* E could hear would never forward. Check eligibility before blaming RF. <Cite ids="MC-004" />
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. Why does the Meshtastic diamond need fewer transmissions than the MeshCore diamond in the table?</summary>
+
+C is a `CLIENT` that hears B's copy before its turn and cancels. MeshCore repeaters forward their first copy of a
+flood. Same RF, different protocol behavior. <Cite ids="MT-C03 MC-010" />
+</details>
+
+<details>
+<summary>2. A report says "PDR 90 %". What's missing?</summary>
+
+The sample size (9/10 and 900/1000 mean very different things), the direction, the fixed conditions, and a
+separate count of on-air attempts. <Cite ids="CUR-C22" />
+</details>
+
+<details>
+<summary>3. Is raising the hop limit to 7 a cheap way to improve reliability?</summary>
+
+No. It lets every message travel farther, so edge and distant nodes spend airtime repeating copies nobody needs,
+for everyone on the channel. Use the smallest limit that reaches your destinations. <Cite ids="MT-C08" />
+</details>
+
+<details>
+<summary>4. Your sender showed 3 failures, but the recipient saw all 20 messages. What was the PDR?</summary>
+
+20/20. Delivery is what the recipient displayed; the missing ACKs are a return-path or ACK problem to investigate
+separately. <Cite ids="MC-030 MT-C13" />
+</details>
+
+<details>
+<summary>Deeper dive: why counts aren't capacity</summary>
+
+- Capacity also depends on collisions, capture, duty-cycle limits and queue behavior, none of which the counts
+  include. The course labs report these as omitted effects.
+- Meshtastic's late-relay roles and favorite-router hop rules change counts in infrastructure-heavy meshes. <Cite ids="MT-C05" />
+- Header, encryption and path bytes add airtime on top of your text; frame size grows with path length on MeshCore. <Cite ids="RF-C05" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="CUR-C09 CUR-C17 CUR-C21 CUR-C22 CUR-C23 MT-C03 MT-C05 MT-C06 MT-C08 MT-C12 MT-C13 MC-004 MC-005 MC-010 MC-013 MC-030 RF-C01 RF-C05 RF-C12 RF-C13" />
+- Sources: <Cite ids="RF-S01 MT-S09 MT-S10 MT-S12 MC-S10 MC-S14 CUR-S04 CUR-S10" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 06: MeshCore under the hood](../06-meshcore-under-the-hood/).
+Next: [Module 08: Privacy, security and rules](../08-privacy-security-rules/). Who can read what, what stays
+visible, and which rules apply to your radio.
+
+<ProgressToggle page="modules/07-reliability-capacity" />

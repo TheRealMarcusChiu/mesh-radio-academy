@@ -1,0 +1,321 @@
+---
+title: 'Module 03: Your first Meshtastic link'
+description: Configure two Meshtastic nodes with the ten-step checkpoint sequence, read delivery indicators honestly, run four controlled mismatch drills, and restore the baseline without publishing a channel key.
+lesson:
+  module: '03'
+  outcomes:
+    - Work through the ten first-link checkpoints in order for two Meshtastic nodes, or their simulated equivalent.
+    - Choose an appropriate client role and explain why infrastructure roles are not a beginner default.
+    - Set region, modem preset and frequency slot so both nodes share one RF channel, and explain how each differs from a logical channel and its key.
+    - Tell apart local acceptance, an implicit ACK, an explicit ACK and a human reply.
+    - Diagnose a preset, frequency-slot, channel-key and unavailable-destination mismatch, one at a time, and restore the baseline without publishing a live QR code or channel URL.
+  estimatedMinutes: 45
+  prerequisites: ['modules/00-start-here', 'modules/01-rf-foundations', 'modules/02-hardware-first-boot']
+  difficulty: beginner
+  sourceIds: [CUR-C01, CUR-C02, CUR-C03, CUR-C12, CUR-C13, MT-C07, MT-C08, MT-C12, MT-C13, MT-C14, MT-C15, MT-C16, MT-C19, MT-C24, MT-C25, HW-C08, HW-C09, HW-C11, NTX-C01, NTX-C05, REG-C06]
+  baseline: 'Meshtastic 2.7.26.54e0d8d Beta, protobufs 6b1ded4; optional apps Android 2.8.3 / Apple 2.7.27 identified, not tested'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+This is the first lesson where a real radio could transmit. You can do all of it **without hardware**: every step
+has a simulated equivalent, and the drills work as paper predictions. If you do have two radios, this lesson is
+your script. Nothing here was run on physical hardware for this course; where a step depends on an app screen,
+the lesson names the setting rather than inventing a menu path.
+
+## Goals and what you need
+
+By the end you will have one documented, repeatable link between two Meshtastic nodes, or a simulated one, and
+you will have broken it four different ways on purpose.
+
+- **Finish first:** [Module 00](../00-start-here/) (layers), [Module 01](../01-rf-foundations/) (RF settings and
+  airtime) and [Module 02](../02-hardware-first-boot/) (board choice, antenna, recovery).
+- **With hardware:** two identical boards with a Meshtastic 2.7.26 target, matching band antennas, USB data
+  cables, a phone or computer per node. <Cite ids="HW-C11" />
+- **Without hardware:** a notebook. Every checkpoint below has a written simulated equivalent, and the drills
+  are prediction exercises with revealed answers. The [packet inspector and mismatch bench](../../labs/packet-inspector/)
+  is the click-through version of the drills; the [routing playground](../../labs/routing-playground/) shows the
+  same message moving once relays join in Module 04.
+
+## The link you are building
+
+<FlowDiagram
+  title="Two-node Meshtastic link"
+  desc="Phone A connects to Node A over Bluetooth or USB. Node A transmits over LoRa to Node B. Node B passes the message to Phone B. A test record sits outside the radio path."
+  width={420}
+  height={150}
+  nodes={[
+    { id: 'pa', x: 60, y: 40, label: 'Phone A', sub: 'app', kind: 'app' },
+    { id: 'na', x: 160, y: 110, label: 'Node A', sub: 'CLIENT' },
+    { id: 'nb', x: 300, y: 110, label: 'Node B', sub: 'CLIENT' },
+    { id: 'pb', x: 360, y: 40, label: 'Phone B', sub: 'app', kind: 'app' },
+  ]}
+  edges={[
+    { from: 'pa', to: 'na', label: 'BLE / USB', kind: 'wire' },
+    { from: 'na', to: 'nb', label: 'LoRa', kind: 'rf' },
+    { from: 'nb', to: 'pb', label: 'BLE / USB', kind: 'wire' },
+  ]}
+  caption="Thin lines are local links to an app; the thick line is the radio link. Both nodes must agree on every RF setting before the thick line exists."
+>
+
+1. Phone A talks to Node A over Bluetooth Low Energy or USB. That link carries an app protocol, not radio packets.
+2. Node A transmits over LoRa. Node B receives only if region, modem settings and frequency slot match.
+3. Node B decrypts with the channel key (or, for a direct message, its private key) and hands the text to Phone B.
+4. Both nodes run the ordinary `CLIENT` role.
+
+</FlowDiagram>
+
+## The checkpoint sequence, Meshtastic edition
+
+This is the same ten-step order Module 02 introduced. Do the steps for **both** nodes before moving on. Each
+step says what to check, why, and the no-hardware equivalent.
+
+1. **Confirm hardware and band.** Read the board label: model, revision, band. In the US the radio and antenna
+   must both be for 902–928 MHz. *Simulated:* write the label of an imaginary RAK4631(H) in your record.
+2. **Attach the matching antenna before power.** A transmitter without its antenna can be damaged. <Cite ids="HW-C09" />
+3. **Back up supported settings, privately.** Exported configuration can include channel keys. A channel-sharing
+   URL encodes every enabled channel's settings, key included, so treat it like a password. <Cite ids="CUR-C12 MT-S23" />
+4. **Choose the exact firmware target and role.** Pick firmware 2.7.26 and your board's target
+   (`heltec-v3`, `rak4631` or `tracker-t1000-e`) explicitly; don't accept whatever "latest" the flasher offers. <Cite ids="HW-C11 MT-S08" />
+   Use the `CLIENT` role: an ordinary endpoint that can still relay. `ROUTER` and `ROUTER_LATE` are infrastructure
+   roles with different relay timing and duplicate handling, meant for coordinated fixed sites, and `REPEATER`
+   is deprecated. <Cite ids="HW-C08 MT-C05" /> If you don't want your node to relay at all, `CLIENT_MUTE`
+   does that. <Cite ids="MT-C07" />
+5. **Verify the installed version on the device.** Check the firmware version the node reports, not just what
+   you meant to flash. Matching version prefixes between app and firmware don't prove they work together. <Cite ids="MT-C25" />
+6. **Set region, then RF parameters.** A node with region `UNSET` does not transmit at all; region comes
+   first. <Cite ids="CUR-C01" /> An unset modem preset means `LONG_FAST` and the hop limit defaults to 3
+   <Cite ids="CUR-C02" />, but your local community may use a different preset. In North Texas, for example, the
+   community's guidance depends on county. <Cite ids="NTX-C01" /> Both nodes need the same region, the same preset
+   and the same frequency slot. <Cite ids="MT-C15" />
+7. **Connect a compatible client.** Pair the phone app over BLE or connect over USB. The Android 2.8.3 and Apple
+   2.7.27 apps were identified as current for this course, not tested with this firmware. The Python CLI 2.7.11
+   is the documented technical client ([operator appendix](../../appendix/operator-tools/)). <Cite ids="MT-C24 MT-C25" />
+8. **Send locally.** First one short message on your private test channel, then a direct message (DM) to the
+   other node. A DM needs the recipient's public key, which nodes learn from each other's node-info broadcasts;
+   if it's unknown, the send fails instead of quietly downgrading to weaker encryption. <Cite ids="MT-C19" />
+9. **Observe the recipient.** Look at Node B's screen or Phone B. What the *sender's* app shows is a different
+   piece of evidence (next section).
+10. **Save a sanitized test record.** Time, firmware, boards, region, preset, slot, roles, what was sent, what was
+    seen where. No keys, channel URLs or precise locations.
+
+Hold on to the record from step 10. Every drill below starts from it, and Module 09 builds on it.
+
+## Delivery indicators are not read receipts
+
+The sender's app reflects four different events. Only the last one involves a person.
+
+| What happened | What it proves | What it doesn't prove |
+|---|---|---|
+| The node accepted the message from the app | It's queued on your node | Anything was transmitted or heard |
+| **Implicit ACK**: your node heard someone rebroadcast it | Some relay repeated your packet | That the destination decoded it, or a human read it <Cite ids="MT-C13" /> |
+| **Explicit ACK** from the destination | A protocol reply came back from that node | That a person read it; in 2.7 it is not a signed receipt <Cite ids="MT-C14" /> |
+| The other person replies | A human saw something | That every earlier message arrived |
+
+On a two-node link with no relays there is nobody to rebroadcast, so a DM's success indicator depends on the
+explicit ACK. Without one, the sender retries: an isolated sender schedules the first send plus two
+retransmissions. <Cite ids="MT-C12" />
+
+## Worked example: a sanitized first-link record
+
+This is a **synthetic** record written the way you would write a real one. No radio produced it.
+
+```text
+Test 03-01  (SYNTHETIC example record, not a capture)
+Firmware    2.7.26.54e0d8d on both nodes (checked on device)
+Boards      Node A: RAK4631(H)+RAK19007, label rev recorded privately
+            Node B: same model
+Region      US      Preset LONG_FAST      Slot  explicit, same on both (number kept in private notes)
+Roles       both CLIENT                   Hop limit 3
+Channel     private test channel, 32-byte key shared in person (key NOT recorded here)
+Client      Android app over BLE (version written from About screen)
+Placement   two rooms apart, indoors, antennas vertical
+Sent        A→channel "test 1"   B shows it: yes
+            A→B DM  "test 2"     B shows it: yes   A shows explicit ACK: yes
+Notes       no relays present, so no implicit ACK expected
+```
+
+Every line is something you can check again later. Notice what's missing: the channel key, the channel URL, any
+coordinates. "Two rooms apart" is enough to repeat the test.
+
+## Four mismatch drills
+
+Each drill changes **one** setting on Node B, from the baseline above. Predict first, then check (or reveal the
+expected result). Restore the baseline before the next drill.
+
+<FlowDiagram
+  title="Where each Meshtastic mismatch breaks the link"
+  desc="Four stacked layers. Preset and slot mismatches break the RF layer, so nothing is heard. A key mismatch passes RF but fails decryption. An unavailable destination passes everything except the reply."
+  width={420}
+  height={230}
+  nodes={[
+    { id: 'rf', x: 110, y: 30, label: 'RF channel', sub: 'region, preset, slot' },
+    { id: 'dec', x: 110, y: 90, label: 'Decrypt', sub: 'channel key / PKI' },
+    { id: 'app', x: 110, y: 150, label: 'App delivery', sub: 'text shown' },
+    { id: 'ack', x: 110, y: 210, label: 'ACK back', sub: 'reply path' },
+    { id: 'd1', x: 320, y: 30, label: 'Drills 1, 2', sub: 'nothing heard', kind: 'bad' },
+    { id: 'd3', x: 320, y: 90, label: 'Drill 3', sub: 'heard, unreadable', kind: 'bad' },
+    { id: 'd4', x: 320, y: 210, label: 'Drill 4', sub: 'no ACK', kind: 'bad' },
+  ]}
+  edges={[
+    { from: 'rf', to: 'dec', kind: 'wire' },
+    { from: 'dec', to: 'app', kind: 'wire' },
+    { from: 'app', to: 'ack', kind: 'wire' },
+    { from: 'd1', to: 'rf', kind: 'dashed' },
+    { from: 'd3', to: 'dec', kind: 'dashed' },
+    { from: 'd4', to: 'ack', kind: 'dashed' },
+  ]}
+  caption="A packet has to pass each layer in order. Each drill fails at a different layer, which is why the symptoms differ."
+>
+
+- Drills 1 (preset) and 2 (frequency slot) fail at the RF channel: Node B never decodes a frame.
+- Drill 3 (channel key) passes RF but fails decryption: the frame arrives and is unreadable to B.
+- Drill 4 (unavailable destination) fails at the reply: nothing comes back, so the sender never gets an ACK.
+
+</FlowDiagram>
+
+<details>
+<summary>Drill 1: modem preset. Node B switches from LONG_FAST to a different preset.</summary>
+
+**Layer:** RF. **Expect:** B shows nothing from A and A gets no ACK. The two nodes now use different spreading
+factor or bandwidth, so B can't demodulate A's frames even on an overlapping frequency. The preset is shared by
+every channel on the node, so changing channels won't fix it. <Cite ids="MT-C15" />
+**Restore:** set B back to the recorded preset.
+</details>
+
+<details>
+<summary>Drill 2: frequency slot. Node B's slot is set to a different number.</summary>
+
+**Layer:** RF. **Expect:** the same symptom as drill 1, for a different reason: the two radios are on different
+center frequencies. A sneakier version: with slot 0 the slot comes from a hash of the **primary** channel's name,
+so renaming the primary channel on one node can move it to another frequency even though a secondary channel
+still matches perfectly. <Cite ids="CUR-C03 MT-C16" />
+**Restore:** set the recorded slot. Note in your record whether you use slot 0 or an explicit one.
+</details>
+
+<details>
+<summary>Drill 3: channel key. Node B keeps the channel name but gets a different key.</summary>
+
+**Layer:** decryption. Keep the slot explicit for this drill so that only the key changes. **Expect:** the frames
+reach B over the air, but B can't decrypt channel messages, so nothing appears in B's channel. A node in rebroadcast
+mode `ALL` could still relay those frames without reading them. <Cite ids="MT-C07 MT-C15" /> DMs use public-key
+encryption rather than the channel key, so they may still get through: a good illustration that "the channel" and
+"a DM" are separate paths. <Cite ids="MT-C19" />
+**Restore:** give B the original key **in person or over a private channel**, never by posting the URL.
+</details>
+
+<details>
+<summary>Drill 4: unavailable destination. Node B is switched off; A sends a DM.</summary>
+
+**Layer:** delivery. **Expect:** A accepts and transmits the message, hears no rebroadcast and no explicit ACK,
+retries (first send plus two retransmissions in this firmware), then reports failure. <Cite ids="MT-C12" />
+Nothing in A's view says *why*: off, out of range and wrong key all look the same from the sender. That is why
+the recipient's observation (checkpoint 9) matters.
+**Restore:** power B on and repeat the baseline send once.
+</details>
+
+## Restore the baseline without publishing a key
+
+After the drills, return both nodes to the recorded baseline. Do it **from your private notes, not from a
+screenshot of a QR code or a pasted channel URL.** The URL carries the key; anyone who sees it can read and write
+your channel. <Cite ids="CUR-C12" />
+
+1. Re-enter region, preset and slot from the record.
+2. Re-enter the channel name. Re-share the key in person, or generate a fresh 16- or 32-byte key and share that
+   privately. <Cite ids="CUR-C13" />
+3. If a channel URL or QR code ever appeared in a photo, chat or repository, treat that key as public and replace it.
+4. Repeat checkpoint 8 once and log it as the restored baseline.
+
+## Your turn: name the drill from the evidence
+
+Four synthetic observation sets are below. For each, name the mismatch and the layer, then say what single check
+would confirm it.
+
+| Case | Node A's app | Node B | Extra clue |
+|---|---|---|---|
+| P | DM: no ACK after retries | Nothing at all | B's slot field reads differently from A's |
+| Q | Channel text: queued, no ACK expected | Nothing in the channel | A DM from A *does* appear on B |
+| R | DM: no ACK after retries | Screen is dark | |
+| S | Channel and DM both fail | Nothing at all | B's primary channel was renamed yesterday; slot is 0 on both |
+
+<details>
+<summary>Suggested answers</summary>
+
+- **P:** frequency slot (drill 2), RF layer. Confirm by comparing the slot setting on both nodes.
+- **Q:** channel key (drill 3), decryption layer. The DM works because it uses public-key encryption, not the
+  channel key. Confirm by comparing the keys privately, never by posting them.
+- **R:** unavailable destination (drill 4). Confirm by powering B and watching its screen during the next send.
+- **S:** slot 0 derives the frequency from the primary channel's name, so renaming it on B moved B to a different
+  frequency: an RF problem caused by a channel change. Confirm by comparing primary channel names, or set an
+  explicit slot on both. <Cite ids="CUR-C03" />
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. Your new node is powered, paired and configured with the right preset, but nobody ever hears it. The region field says UNSET. Why?</summary>
+
+A node with no region set does not transmit. Region comes before every on-air step. <Cite ids="CUR-C01" />
+</details>
+
+<details>
+<summary>2. A friend says "we're both on LongFast, so we're on the same channel". What else has to match for a channel message to be readable?</summary>
+
+The region and frequency slot (same RF channel), and the logical channel's **key**. A preset is only the modem
+settings; logical channel, key, slot and preset are separate settings. <Cite ids="MT-C15" />
+</details>
+
+<details>
+<summary>3. Your app shows a check mark on a DM. Can you say the person read it?</summary>
+
+No. At best it's an explicit ACK from their node, which is not a human acknowledgment and, in 2.7, not a signed
+receipt. Only a reply tells you a person saw something. <Cite ids="MT-C14" />
+</details>
+
+<details>
+<summary>4. Why is CLIENT the right first role, and not ROUTER?</summary>
+
+`CLIENT` is an ordinary endpoint that can still relay. `ROUTER` changes relay timing and skips the ordinary
+duplicate cancellation, which is meant for coordinated fixed sites; using it casually adds traffic for everyone
+nearby. <Cite ids="MT-C05 HW-C08" />
+</details>
+
+<details>
+<summary>5. You want to show someone your channel setup online. What can you share safely?</summary>
+
+Region, preset, role and the fact that the channel uses a 32-byte key. Not the key, the channel URL or its QR code:
+the URL encodes the key. <Cite ids="CUR-C12" />
+</details>
+
+<details>
+<summary>Deeper dive: what the radio actually sends for this message</summary>
+
+- Over the air, a Meshtastic frame starts with a 16-byte header in the clear: destination, sender, packet ID, a
+  flags byte holding the hop limit and hop start, a **one-byte channel hash**, and next-hop and relay bytes.
+  The channel's name never travels; the hash is only a hint for which key to try. <Cite ids="CUR-C04 MT-S20" />
+- Channel keys are 16 bytes (AES-128) or 32 bytes (AES-256). One-byte shorthand keys pick values printed in the
+  firmware source, including the default key, so they are effectively public. <Cite ids="CUR-C13 MT-C17" />
+- With slot 0, the slot is `hash(primary channel name) % number of slots`; the number of slots depends on region
+  and bandwidth. Explicit slots avoid surprises. <Cite ids="CUR-C03" />
+- The hop limit counts relays, not RF links; on a two-node link it doesn't matter yet. Module 04 uses it. <Cite ids="MT-C08" />
+- First contact with a community should be low-traffic: listen, then one short introduction, and coordinate
+  repeated tests out of band. <Cite ids="NTX-C05" />
+- No candidate device's FCC grant was confirmed by this course. Module 08 shows how to look one up. <Cite ids="REG-C06" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="CUR-C01 CUR-C02 CUR-C03 CUR-C04 CUR-C12 CUR-C13 MT-C05 MT-C07 MT-C08 MT-C12 MT-C13 MT-C14 MT-C15 MT-C16 MT-C17 MT-C19 MT-C24 MT-C25 HW-C08 HW-C09 HW-C11 NTX-C01 NTX-C05 REG-C06" />
+- Sources: <Cite ids="CUR-S02 CUR-S04 CUR-S05 CUR-S07 CUR-S08 MT-S08 MT-S13 MT-S19 MT-S20 MT-S23" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 02: Hardware and first boot](../02-hardware-first-boot/).
+Next: [Module 04: Meshtastic under the hood](../04-meshtastic-under-the-hood/). Add a third node and follow a
+broadcast and a DM relay by relay.
+
+<ProgressToggle page="modules/03-first-meshtastic-link" />

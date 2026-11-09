@@ -1,0 +1,218 @@
+---
+title: 'Module 10: Build a neighborhood mesh'
+description: Choose a topology and roles, plan antenna height and polarization, budget power and maintenance, handle weatherproofing, grounding and permission safely, and write a change plan that starts from your local community's settings.
+lesson:
+  module: '10'
+  outcomes:
+    - Choose a topology for a neighborhood and assign personal and infrastructure roles on each protocol.
+    - Plan antenna placement from polarization, Fresnel clearance and what each relay can hear, rather than from rules of thumb.
+    - Build a power budget with explicit units and assumptions, and a maintenance plan.
+    - Name the conductive paths an outdoor node adds and where weatherproofing, grounding and surge protection need qualified guidance and permission.
+    - Write a change plan that checks community settings by area and protocol, coordinates infrastructure first, and makes a low-traffic first contact.
+  estimatedMinutes: 50
+  prerequisites: ['modules/01-rf-foundations', 'modules/07-reliability-capacity', 'modules/08-privacy-security-rules']
+  difficulty: intermediate
+  sourceIds: [RF-C08, RF-C11, RF-C14, HW-C05, HW-C09, HW-C10, MT-C05, MT-C07, MC-004, MC-024, NTX-C01, NTX-C02, NTX-C03, NTX-C04, NTX-C05, CUR-C17, CUR-C25, CUR-C26, REG-C01]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; NTX Mesh pages checked 2026-11-09; ARRL and NWS guidance checked 2026-11-09'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+A neighborhood mesh is shared infrastructure: it uses spectrum your neighbors also use, it may sit on someone
+else's building, and it needs looking after for years. This module is about planning one responsibly. It doesn't
+send you up a ladder: no hardware is needed, everything here can be done on paper or in the
+[field planner](../../labs/field-planner/), and any physical installation should follow permission, qualified advice
+and local code.
+
+## Goals and prerequisites
+
+You need link margin and Fresnel clearance from [Module 01](../01-rf-foundations/), airtime counting from
+[Module 07](../07-reliability-capacity/) and the privacy checklist from [Module 08](../08-privacy-security-rules/).
+
+## Topology and roles
+
+<FlowDiagram
+  title="A small neighborhood plan"
+  desc="Three homes with personal nodes. A relay at a high site that all three homes can reach. A second relay links the high site to a distant cluster. Homes do not hear each other directly."
+  width={440}
+  height={210}
+  nodes={[
+    { id: 'h1', x: 60, y: 170, label: 'Home 1', sub: 'personal' },
+    { id: 'h2', x: 180, y: 170, label: 'Home 2', sub: 'personal' },
+    { id: 'h3', x: 300, y: 170, label: 'Home 3', sub: 'personal' },
+    { id: 'hi', x: 180, y: 40, label: 'High site', sub: 'relay, permitted' },
+    { id: 'far', x: 380, y: 40, label: 'Next cluster', sub: 'relay', kind: 'note' },
+  ]}
+  edges={[
+    { from: 'h1', to: 'hi', kind: 'rf', arrow: false },
+    { from: 'h2', to: 'hi', kind: 'rf', arrow: false },
+    { from: 'h3', to: 'hi', kind: 'rf', arrow: false },
+    { from: 'hi', to: 'far', label: 'backbone', kind: 'rf', arrow: false },
+  ]}
+  caption="Personal nodes stay ordinary; one coordinated relay at a site that can see all of them does the forwarding."
+>
+
+- Homes 1–3 run personal nodes and can't hear each other directly.
+- One relay at a high, permitted site hears all three homes.
+- A second link from the high site reaches the next cluster's relay.
+
+</FlowDiagram>
+
+| Role | Meshtastic | MeshCore |
+|---|---|---|
+| Personal handheld or home node | `CLIENT` (relays as needed) or `CLIENT_MUTE` (never relays) <Cite ids="MT-C07" /> | Companion, repeating off by default <Cite ids="MC-004" /> |
+| Coordinated fixed relay | `ROUTER` or `ROUTER_LATE` only where the community agrees: they relay early or late and skip ordinary duplicate cancellation <Cite ids="MT-C05" /> | Dedicated repeater image |
+| Shared history for a group | (No direct equivalent in the course scope) | Room server, with its operator inside the trust boundary |
+
+**Placement is engineering, not a slogan.** "Put all relays on the same roof" fails for a reason you've already
+counted: two relays that hear exactly the same nodes add copies without adding coverage (Module 07's diamond). Put a
+relay where it hears nodes that otherwise can't hear each other, and no more relays than the links need.
+
+## Antennas: polarization and height
+
+- **Polarization:** keep antennas at both ends in the same orientation, normally vertical. A mismatch adds loss
+  that simple formulas ignore. <Cite ids="RF-C14" />
+- **Height:** what matters is clearing the first Fresnel zone, not only seeing the other antenna. On a 2 km link at
+  915 MHz the zone is about 12.8 m in radius at the midpoint. A relay a few meters higher can clear roofs and trees
+  that sit inside that zone. <Cite ids="RF-C11" />
+- **Gain:** a higher-gain antenna narrows the pattern; it may point energy over your neighbors' heads. Check
+  antenna changes against the device's authorization (Module 08).
+
+## Power and maintenance budget
+
+Battery runtime is a calculation with assumptions, not a product property. <Cite ids="RF-C08" />
+
+```text
+Average current  = f_tx·I_tx + f_rx·I_rx + f_sleep·I_sleep   (all at the same supply rail)
+Runtime (hours)  = capacity_mAh × usable_fraction × efficiency / average current
+```
+
+**Worked synthetic example:** 1 % transmit at 120 mA, 98 % receive at 15 mA, 1 % sleep at 0.1 mA →
+**15.901 mA** average. With 2000 mAh, 80 % usable and 90 % assumed conversion efficiency: 2000 × 0.8 × 0.9 / 15.901 ≈
+**90.6 hours**. <Cite ids="CUR-C26" /> Every input is invented. Real nodes add screens, LEDs, GPS, Bluetooth,
+regulator losses and other people's relay traffic; a relay listens almost all the time, so its receive current
+dominates. Manufacturer current figures are measured under stated conditions, not whole-node averages. <Cite ids="HW-S03" />
+
+Battery limits that come from manufacturers, not from the formula:
+
+- The T1000-E may only be charged between 0 and 45 °C: operating in the cold is not the same as charging in it. <Cite ids="HW-C05" />
+- The RAK19007's solar input must not exceed 5.5 V, and battery polarity must match the board's drawing. <Cite ids="HW-C09" />
+
+A **maintenance plan** for each infrastructure node:
+
+| Task | How often | Notes |
+|---|---|---|
+| Check firmware advisories, plan updates | Monthly | Both projects' first-party pages |
+| Read battery voltage or solar charge log | Monthly, and after cold spells | Compare with the budget |
+| Inspect enclosure, seals, cable entry | Twice a year, never in storms | IP ratings don't cover degraded seals |
+| Confirm admin password changed and ACL current | After any membership change | <Cite ids="MC-024" /> |
+| Review beacon and advert intervals | When the mesh grows | MeshCore repeater flood adverts default to every 47 h <Cite ids="CUR-C17" /> |
+| Record who has physical and admin access | Always current | Kept private |
+
+## Weatherproofing, grounding and safe installation
+
+An outdoor node adds **conductive paths**: the antenna feed line, USB or DC power, solar wiring and any mains supply.
+Protection has to account for every one of them; no single surge arrestor makes an installation safe. <Cite ids="HW-C10" />
+
+- Use current local electrical and building requirements and a qualified installer for anything mounted outdoors.
+  The ARRL material the course cites is educational background, not code. <Cite ids="HW-S12" />
+- Don't install, inspect or test outdoors during thunderstorms. <Cite ids="HW-S13" />
+- A manufacturer's IP65 rating is not a promise against immersion, condensation or a cable you added. <Cite ids="HW-C05" />
+- Get the property owner's **permission** before placing anything, and their agreement on access for maintenance.
+- As a beginner, stay off roofs and masts and away from overhead lines. A window or an indoor high shelf is a
+  legitimate first site.
+
+## Change plan: community first
+
+Before adding a relay or traffic, check what your area already uses, **by area and by protocol**.
+
+1. **Find the maintained source.** For the dated North Texas example (checked 2026-11-09), NTX Mesh's join page
+   says Meshtastic guidance depends on county, with `LONG_FAST` as its default and a county preset map. <Cite ids="NTX-C01" />
+   For MeshCore the join page listed 910.525 MHz, 62.5 kHz, SF7, "CR5", while the map page points to Discord for
+   current settings. <Cite ids="NTX-C02" /> Those are a community's dated settings, not regulation and not
+   universal. Outside North Texas, find your own community's page.
+2. **Notice where sources disagree.** The NTX broadcast-interval table and its prose don't match; ask the maintainers
+   rather than picking one. <Cite ids="NTX-C03" />
+3. **Don't read a map as a census.** The NTX map is a preset map, not live coverage, and no map shows every node. <Cite ids="NTX-C04 CUR-C25" />
+4. **Coordinate infrastructure before deploying it.** Tell the community where, which protocol, which role, which
+   settings and who maintains it.
+5. **First contact, low traffic.** Listen first, send one short introduction, wait for a human reply, and take
+   repeated tests out of band. <Cite ids="NTX-C05" />
+6. **Remember the spectrum is shared.** Unlicensed operation has no protected frequency and must not cause harmful
+   interference. <Cite ids="REG-C01" />
+
+## Your turn: write a change plan
+
+Your street wants a relay so three homes can reach a park two blocks away. A neighbor offers a second-floor window
+facing the park. Write a one-page change plan with: protocol and role, settings source and date, why this site
+(what it hears that the homes don't), power budget assumptions, maintenance owner, permission, and the first-contact
+message you'd send.
+
+<details>
+<summary>A model answer (Meshtastic version)</summary>
+
+- **Protocol and role:** Meshtastic, because the community page for this area lists it; the relay as `ROUTER_LATE`
+  only if the community agrees, otherwise `CLIENT`. Homes stay `CLIENT`.
+- **Settings:** preset and slot from the community's county guidance, recorded with the date checked.
+- **Why this site:** the window can see the park and all three homes; the homes can't see the park. That's coverage
+  a home node can't provide.
+- **Power:** USB from the neighbor's mains supply; no battery outdoors; indoors, so no outdoor conductive paths.
+- **Maintenance:** one named person checks advisories monthly and visits by appointment.
+- **Permission:** the neighbor's written OK, including how to remove the node.
+- **First contact:** "New relay planned near [approximate area], Meshtastic, community preset. Can anyone near the
+  park confirm they hear the test node this weekend?" Then wait.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. Why can adding a second relay next to the first make a mesh worse?</summary>
+
+If both hear the same nodes, they add copies of every packet without reaching anyone new: more airtime, more chances
+of collision, no gain. Module 07 counted exactly this: each MeshCore repeater forwards its first copy of a flood,
+and Meshtastic `ROUTER` roles skip ordinary cancellation. <Cite ids="MC-010 MT-C05" />
+</details>
+
+<details>
+<summary>2. The community map shows no nodes in your area. Can you assume nobody's there?</summary>
+
+No. Maps only show what reported to them. Listen first and ask the community. <Cite ids="CUR-C25 NTX-C04" />
+</details>
+
+<details>
+<summary>3. A solar node's battery runs flat every winter although the summer budget said 5 days. Name two assumptions to revisit.</summary>
+
+Any two of: lower usable capacity in the cold, no charging below the charge temperature limit, less solar input,
+more relay traffic than assumed, extra loads such as a screen. <Cite ids="RF-C08 HW-C05" />
+</details>
+
+<details>
+<summary>4. Is a coax surge arrestor enough to protect a rooftop node?</summary>
+
+No. Every conductive path (feed line, power, solar wiring) needs a plan, done to local code by a qualified person. <Cite ids="HW-C10" />
+</details>
+
+<details>
+<summary>Deeper dive: two Fresnel-zone sanity checks</summary>
+
+- Midpoint radius grows with √distance: a 4 km link has a midpoint radius about √2 times the 2 km one, roughly 18 m.
+- Near either end, the zone narrows, so obstacles close to an antenna matter less than the same obstacle halfway.
+  This is geometry from the ITU formula, not a coverage prediction. <Cite ids="RF-C11" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="RF-C08 RF-C11 RF-C14 HW-C05 HW-C09 HW-C10 MT-C05 MT-C07 MC-004 MC-024 NTX-C01 NTX-C02 NTX-C03 NTX-C04 NTX-C05 CUR-C17 CUR-C25 CUR-C26 REG-C01" />
+- Sources: <Cite ids="RF-S04 RF-S05 HW-S03 HW-S04 HW-S06 HW-S12 HW-S13 NTX-S01 NTX-S02" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 09: Troubleshooting and field tests](../09-troubleshooting-field-tests/).
+Next: [Module 11: Compare and choose](../11-compare-choose/). Pick a protocol and architecture for a scenario from
+evidence.
+
+<ProgressToggle page="modules/10-neighborhood-mesh" />

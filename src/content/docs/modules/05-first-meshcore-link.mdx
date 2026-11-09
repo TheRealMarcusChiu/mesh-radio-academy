@@ -1,0 +1,262 @@
+---
+title: 'Module 05: Your first MeshCore link'
+description: Set up two MeshCore companions with the ten-step checkpoint sequence, advertise and add contacts, send a direct message and a channel message, then add a dedicated repeater and see when a room server helps.
+lesson:
+  module: '05'
+  outcomes:
+    - Pick an exact board, companion firmware image and documented client transport, and say which of those combinations are documented versus tested.
+    - Work through the same ten checkpoints as Module 03 for two MeshCore companions, or their simulated equivalent.
+    - Explain a zero-hop advert, a flooded advert and adding a contact, and why hearing an advert doesn't give you a route.
+    - Send a direct message and a public-channel message, and read the delivery evidence honestly.
+    - Add a third node as a dedicated repeater for a relayed-path exercise, and explain when a room server is more useful than a channel.
+  estimatedMinutes: 50
+  prerequisites: ['modules/02-hardware-first-boot', 'modules/03-first-meshtastic-link']
+  difficulty: beginner
+  sourceIds: [MC-002, MC-003, MC-004, MC-006, MC-007, MC-008, MC-018, MC-019, MC-020, MC-021, MC-024, MC-026, MC-027, MC-030, HW-C04, HW-C06, HW-C09, HW-C12, NTX-C02, CUR-C16, CUR-C17, CUR-C20, LW-C02, LW-C03]
+  baseline: 'MeshCore companion/repeater/room-server 1.18.0 (81dbae5); Liam Cottle app 1.50.0 documented, not tested'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+MeshCore runs on the same kind of radio as Meshtastic but is a different protocol: the two don't exchange native
+messages, even on identical RF settings. <Cite ids="LW-C02" /> This lesson repeats Module 03's checkpoint
+sequence on MeshCore, so you can compare the two step by step. As before, nothing here was run on real hardware for
+the course, every step has a simulated equivalent, and app menu names are described rather than invented.
+
+## Goals and what you need
+
+- **Finish first:** [Module 02](../02-hardware-first-boot/) (board, antenna, recovery) and
+  [Module 03](../03-first-meshtastic-link/) (checkpoints, delivery indicators).
+- **With hardware:** two identical boards that have MeshCore 1.18.0 companion targets, band antennas, USB data
+  cables, and a phone each. A third identical board for the repeater exercise. <Cite ids="HW-C04" />
+- **Without hardware:** a notebook and the [routing playground](../../labs/routing-playground/) (MeshCore side),
+  which starts from two companions and two dedicated repeaters.
+
+## Pick exact parts, and say how sure you are
+
+| Part | Course choice | Evidence status |
+|---|---|---|
+| Board | RAK4631(H) + RAK19007, or Heltec V3 | Build targets exist; not built or flashed for the course <Cite ids="HW-C04" /> |
+| Firmware | `companion-v1.18.0`, BLE image for your board (for example `RAK_4631_companion_radio_ble`) | Tag pinned to commit `81dbae5` <Cite ids="MC-002" /> |
+| Client | Liam Cottle's MeshCore app 1.50.0 over BLE | Documented with firmware 1.18.0 in the release notes; **not tested** <Cite ids="MC-003" /> |
+| USB companion + web client | Image exists | Combination untested; not used here |
+| Repeater (third node) | `repeater-v1.18.0` image for the same board | A **different image**, not a setting <Cite ids="HW-C04" /> |
+
+The phone talks to the companion over BLE using the companion protocol. That's an app protocol, not the radio
+packet format. <Cite ids="MC-018 LW-C03" />
+
+## The link, and the relay you'll add
+
+<FlowDiagram
+  title="MeshCore companions and an optional repeater"
+  desc="Phone A and Phone D connect over Bluetooth to companions A and D. A and D can talk over LoRa directly. In the third-node exercise, the direct A–D link is unavailable and repeater B sits between them."
+  width={440}
+  height={200}
+  nodes={[
+    { id: 'pa', x: 60, y: 40, label: 'Phone A', sub: 'app 1.50.0', kind: 'app' },
+    { id: 'a', x: 90, y: 150, label: 'Companion A', sub: 'repeat off' },
+    { id: 'b', x: 220, y: 100, label: 'Repeater B', sub: 'third node', kind: 'note' },
+    { id: 'd', x: 350, y: 150, label: 'Companion D', sub: 'repeat off' },
+    { id: 'pd', x: 380, y: 40, label: 'Phone D', sub: 'app 1.50.0', kind: 'app' },
+  ]}
+  edges={[
+    { from: 'pa', to: 'a', label: 'BLE', kind: 'wire' },
+    { from: 'a', to: 'd', label: 'LoRa (two-node)', kind: 'rf' },
+    { from: 'a', to: 'b', kind: 'dashed' },
+    { from: 'b', to: 'd', kind: 'dashed' },
+    { from: 'd', to: 'pd', label: 'BLE', kind: 'wire' },
+  ]}
+  caption="Start with the direct A–D link. The dashed path through repeater B is the third-node exercise, where A and D can no longer hear each other."
+>
+
+1. Each phone connects to its own companion over BLE.
+2. In the two-node stage, companions A and D hear each other over LoRa.
+3. In the third-node stage, A and D are moved apart so they can't hear each other, and a dedicated repeater B
+   that both can hear forwards between them.
+4. Both companions keep repeating off, which is their default. <Cite ids="MC-004" />
+
+</FlowDiagram>
+
+## The checkpoint sequence, MeshCore edition
+
+1. **Confirm hardware and band.** Same as Module 03: label, revision, 902–928 MHz in the US.
+2. **Attach the matching antenna before power.** <Cite ids="HW-C09" />
+3. **Back up supported settings, privately, and know what erase does.** Reflashing from Meshtastic to MeshCore
+   doesn't carry over identities or keys. The MeshCore flasher warns that erasing destroys the device identity:
+   your contacts would know a "new" node afterwards. <Cite ids="HW-C12" /> Use only the procedure your board's
+   manufacturer documents; on the T1000-E, Seeed's exact-image instructions override generic advice. <Cite ids="HW-C06" />
+4. **Choose the exact firmware image and role.** The companion BLE image for your board at 1.18.0. Companion,
+   repeater and room server are separate images. <Cite ids="HW-C04" />
+5. **Verify the installed version** on the device or in the app's device information, and write it down.
+6. **Set region and RF parameters.** Both companions need the same frequency, bandwidth, spreading factor and
+   coding rate. There's no universal value: in North Texas the community's join page published 910.525 MHz,
+   62.5 kHz, SF7 and "CR5" (checked 2026-11-09), while its map page sends MeshCore users to Discord for current
+   settings. Check your own community's maintained page. <Cite ids="NTX-C02" />
+7. **Connect the client.** Pair the app over BLE. If pairing fails after a reflash, remove the old Bluetooth
+   pairing and try again. <Cite ids="HW-S08" />
+8. **Send locally:** advertise, add the contact, send a DM (next section).
+9. **Observe the recipient** on Phone D.
+10. **Save a sanitized test record.** No private keys, full public keys or locations.
+
+## Adverts, contacts and the first direct message
+
+MeshCore nodes announce themselves with **adverts**: a signed packet carrying the node's public key, name, role
+and optional location.
+
+- A **zero-hop advert** reaches only radios that hear you directly. Repeaters don't pass it on.
+- A **flooded advert** can be relayed by eligible repeaters, so farther nodes can learn you. <Cite ids="MC-006" />
+- Hearing an advert gives you an **identity** for a contact. It doesn't give you a route: a new contact starts with
+  an unknown path. <Cite ids="MC-007" />
+
+For a DM, both companions need each other as contacts, from adverts or added manually. A signed advert proves the
+sender holds that key, not that the name is who you think. Compare the **full** public key with your partner in
+person before you trust it. A short prefix is a routing hint that can collide, not proof of identity. <Cite ids="MC-019 MC-015" />
+
+Then send a short DM from A to D. With no known route, A **floods** it. D replies with a returned path bundled
+with an ACK, and A stores that path for next time. <Cite ids="MC-008" /> On a two-node link the "path" is empty:
+D heard A directly.
+
+Read the evidence like Module 03, with MeshCore's four separate events: A's companion accepted the send; a matching
+protocol ACK came back; D's app displayed it; D's human replied. <Cite ids="MC-030" />
+
+## Channels: public and private
+
+- The **public channel** uses a published key. Anyone with that key can read and post. Encryption on a known-key
+  channel doesn't make it private. <Cite ids="MC-020" />
+- A **private channel** limits readers and writers to people holding its key. Every key holder can still type any
+  sender name; the name in a group message isn't verified. <Cite ids="MC-021" />
+
+Post one short line on a private test channel from A and look for it on D. If you post on a real public channel,
+keep it to a brief introduction (Module 10 covers first contact with a community).
+
+## Worked example: a sanitized two-companion record
+
+```text
+Test 05-01  (SYNTHETIC example record, not a capture)
+Firmware    companion 1.18.0 BLE image on both (version read in app device info)
+Boards      2 × RAK4631(H)+RAK19007; label revisions in private notes
+Radio       frequency / BW / SF / CR copied from community page, dated 2026-11-09; same on both
+Client      MeshCore app 1.50.0 on both phones (About screen)
+Adverts     A zero-hop advert → D lists A as contact: yes
+            D zero-hop advert → A lists D as contact: yes
+Key check   full public keys read side by side in person; full-key comparison: match
+            (the keys themselves are not written here)
+DM A→D      "test 1"   D shows: yes   A shows ACK: yes
+Channel     private test channel "test 2": D shows: yes
+Not stored  private keys, full public keys, channel key, locations
+```
+
+## Third node: a dedicated repeater
+
+Now make A and D unable to hear each other. Use distance or walls, never a missing antenna or detuned settings.
+Then work through three stages, changing one thing each time.
+
+1. **No relay.** A's DM floods; nobody forwards it; no ACK. A sees "not confirmed", which on its own doesn't
+   tell you why.
+2. **Middle node as a companion.** Put a third companion B between them. Companions have repeating off by default,
+   so B hears A and stays quiet. Same result. <Cite ids="MC-004" />
+3. **Middle node as a repeater.** Flash B with the **repeater** image for that board. Set its radio to the same
+   values as A and D: the documented console default `869.618,62.5,8,5` is outside the US band, and the setting
+   needs a reboot. <Cite ids="CUR-C16" /> **Change its admin password** from the shipped `password` before
+   deploying, and don't paste the command's reply anywhere: it echoes the new password. <Cite ids="MC-024 CUR-C20" />
+   Now A's flooded DM is relayed by B, D replies, and A stores the path `[B]`. The next DM goes **direct**
+   through B.
+
+A repeater also sends flooded adverts on its own, every 47 hours by default, which other nodes use to learn it. <Cite ids="CUR-C17" />
+Module 06 follows these packets byte by byte.
+
+## When a room server helps
+
+A **room server** is a third role, also its own image. Clients log in; the server **decrypts and stores** posts
+and hands them to members who connect later. <Cite ids="MC-026" />
+
+| | Channel | Room server |
+|---|---|---|
+| Who keeps history | Only each listener's app, for what it heard | The server, in a bounded queue (32 posts by default, build-configurable) <Cite ids="MC-027" /> |
+| Someone was offline | They miss it | They can catch up on recent posts |
+| Who can read content | Every key holder | Logged-in members **and the server and its operator** |
+| Good for | Live chat among people who are on air | A notice board for a group that's on air at different times |
+
+A room server is a trusted endpoint, not opaque storage, and the course promises no retention time.
+
+## Your turn: predict the three stages
+
+Before running (or reading) the third-node exercise, fill in this table for stages 1–3: does D display the
+message, does A see a confirmation, and how many radio transmissions does A's first DM cause? Assume the first DM
+floods, and count only the DM itself, not the reply.
+
+<details>
+<summary>Answer</summary>
+
+| Stage | D displays? | A confirmed? | DM transmissions |
+|---|---|---|---|
+| 1. No relay | No | No | 1 (A) |
+| 2. Companion B, repeat off | No | No | 1 (A); B hears it and stays quiet |
+| 3. Repeater B | Yes | Yes, once D's PATH+ACK returns through B | 2 (A, B) |
+
+Stage 2 is the point: a node in the middle isn't enough; it has to be eligible to forward. <Cite ids="MC-004" />
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. D heard A's zero-hop advert. Does A now have a route to D?</summary>
+
+No. An advert gives an identity. A's path to D starts unknown and is learned from D's returned path after a DM. <Cite ids="MC-007 MC-008" />
+</details>
+
+<details>
+<summary>2. You put a spare companion in the middle and nothing changed. Why?</summary>
+
+Companions have repeating off by default. Use a dedicated repeater image, or deliberately change the companion's
+setting with the community's agreement. <Cite ids="MC-004" />
+</details>
+
+<details>
+<summary>3. A message on your private channel says it's from "Sam". How sure can you be?</summary>
+
+Only that a key holder sent it. Group sender names are unverified text. <Cite ids="MC-021" />
+</details>
+
+<details>
+<summary>4. Your group wants late arrivals to see what was said. Channel or room server, and what's the trade?</summary>
+
+A room server, which stores recent posts. The trade: the server and its operator can read everything, and history
+is a bounded queue, not an archive. <Cite ids="MC-026 MC-027" />
+</details>
+
+<details>
+<summary>5. You reflash a working companion and its contacts now show a "new" node. What happened?</summary>
+
+The flash erased the device identity, so it has a new key pair. Erase steps destroy identity; back up first and
+expect to re-exchange contacts. <Cite ids="HW-C12" />
+</details>
+
+<details>
+<summary>Deeper dive: the companion protocol versus the radio packet</summary>
+
+- The app sends commands such as "send this text to contact X" over BLE using the companion protocol. The companion
+  firmware turns that into an over-air packet with its own header, path and encrypted body. Capturing BLE traffic
+  tells you nothing about the radio frame layout, and the reverse. <Cite ids="MC-018" />
+- Path entries can be 1, 2 or 3 bytes wide; nodes older than 1.14 drop multibyte paths. Keep a mixed-version mesh
+  on one-byte paths until every forwarder is updated. <Cite ids="MC-014 MC-015" />
+- The release notes introduce a remote companion CLI permission with 1.18.0 and app 1.50.0. Leave it off for a
+  first link. <Cite ids="MC-025" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="MC-002 MC-003 MC-004 MC-006 MC-007 MC-008 MC-014 MC-015 MC-018 MC-019 MC-020 MC-021 MC-024 MC-025 MC-026 MC-027 MC-030 HW-C04 HW-C06 HW-C09 HW-C12 NTX-C02 CUR-C16 CUR-C17 CUR-C20 LW-C02 LW-C03" />
+- Sources: <Cite ids="MC-S04 MC-S05 MC-S06 MC-S07 MC-S11 MC-S13 MC-S15 MC-S16 MC-S19 HW-S08 HW-S10 CUR-S10" />
+- Terms: [glossary](../../glossary/).
+
+## Next
+
+Previous: [Module 04: Meshtastic under the hood](../04-meshtastic-under-the-hood/).
+Next: [Module 06: MeshCore under the hood](../06-meshcore-under-the-hood/). Follow the flood, the returned path
+and the direct packet header by header, then break a hop.
+
+<ProgressToggle page="modules/05-first-meshcore-link" />

@@ -1,0 +1,253 @@
+---
+title: 'Module 12: Capstone and operator reference'
+description: Design a simulated three-to-five-node network, predict its path and airtime, break one link, capture the failure, change one variable, retest and explain - with a scored rubric, a fully worked synthetic solution, a privacy, compliance and maintenance plan, and the operator reference links.
+lesson:
+  module: '12'
+  outcomes:
+    - Design a three-to-five-node network and predict its route and airtime before testing.
+    - Introduce an asymmetric or failed link, capture what each node observes, change exactly one variable and retest.
+    - Explain the result with evidence, separating measurement from inference.
+    - Write a privacy, compliance and maintenance plan for the design.
+    - Score your report against the rubric and compare it with the worked solution.
+  estimatedMinutes: 90
+  prerequisites: ['modules/06-meshcore-under-the-hood', 'modules/07-reliability-capacity', 'modules/08-privacy-security-rules', 'modules/09-troubleshooting-field-tests', 'modules/10-neighborhood-mesh', 'modules/11-compare-choose']
+  difficulty: advanced
+  sourceIds: [CUR-C21, CUR-C22, CUR-C23, CUR-C24, MC-008, MC-009, MC-010, MC-011, MC-012, MC-013, MC-024, MC-030, MC-032, MT-C11, MT-C12, REG-C01, REG-C06, HW-C10, NTX-C05]
+  baseline: 'Meshtastic 2.7.26.54e0d8d; MeshCore 1.18.0; course teaching RF profile (RF-F01 settings)'
+  reviewed: 2026-11-09
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+The capstone puts the whole course into one report: design a small network, predict what it will do, break it on
+purpose, fix one thing and explain what happened. You can finish it entirely in the browser. The
+[field planner and capstone workbench](../../labs/field-planner/) is where you sketch, log and export the report;
+the [routing playground](../../labs/routing-playground/) and [RF sandbox](../../labs/rf-sandbox/) supply the
+simulated runs. A hardware extension at the end is optional.
+
+## Goals and prerequisites
+
+Finish Modules 06–11 first. You'll use path learning (06), airtime counting and PDR (07), the threat model and
+rules check (08), the test log (09), the community-first plan (10) and the decision table (11).
+
+## The brief
+
+1. **Design** a network of 3–5 nodes on one protocol. Draw it, assign roles and write the RF settings.
+2. **Predict** the route a message takes and the airtime it costs, before running anything.
+3. **Break** one link: make it fail completely or only in one direction.
+4. **Capture** what each node observes. Write measurements and inferences separately.
+5. **Change exactly one variable** and **retest**.
+6. **Explain** the result from evidence.
+7. **Plan** privacy, compliance and maintenance for the design.
+
+Simulated results must be labeled as simulations. Don't report a simulated delivery as a field result, and don't
+treat the workbench's outputs as range or battery predictions.
+
+## Rubric (20 points)
+
+| Criterion | 0 | 1 | 2 | 3 |
+|---|---|---|---|---|
+| Topology sketch with roles and links | Missing | Nodes only | Nodes, roles, links | Plus which nodes can't hear each other |
+| Path prediction | Missing | Guess | Rule-based | Rule-based with cited claim IDs |
+| Airtime prediction | Missing | Total only | Per-transmission count | Count × per-frame airtime with stated assumptions |
+| Failure introduced and captured | Missing | Described | Each node's observation recorded | Plus what the sender *cannot* tell |
+| One-variable change and retest | Missing | Several changes | One change, retested | One change, retested with a stated sample size |
+| Explanation | Missing | Opinion | Evidence-based | Measurement and inference clearly separated |
+| Privacy, compliance, maintenance plan | Missing | One of three | All three | All three, specific and dated |
+
+Seven criteria at 3 points is 21; cap the score at **20**. 16+ is a strong report; under 10, revisit the weakest
+criterion's module.
+
+## Worked solution: a four-node MeshCore network
+
+This is a complete synthetic report. Every event is a teaching model from the pinned 1.18.0 source; no radio was
+used.
+
+### 1. Design
+
+<FlowDiagram
+  title="Capstone design four nodes"
+  desc="Companion A at home and companion D at a community hall cannot hear each other. Repeaters B and C sit between them; both can reach A and D, and they can hear each other. In the failure run the B–D link is broken."
+  width={360}
+  height={210}
+  nodes={[
+    { id: 'a', x: 60, y: 105, label: 'A', sub: 'companion, home' },
+    { id: 'b', x: 180, y: 35, label: 'B', sub: 'repeater b2' },
+    { id: 'c', x: 180, y: 175, label: 'C', sub: 'repeater c3' },
+    { id: 'd', x: 300, y: 105, label: 'D', sub: 'companion, hall' },
+  ]}
+  edges={[
+    { from: 'a', to: 'b', kind: 'rf', arrow: false },
+    { from: 'a', to: 'c', kind: 'rf', arrow: false },
+    { from: 'b', to: 'd', label: 'breaks in run 2', kind: 'broken', arrow: false },
+    { from: 'c', to: 'd', kind: 'rf', arrow: false },
+    { from: 'b', to: 'c', kind: 'dashed', arrow: false },
+  ]}
+  caption="The capstone design. B–D works in run 1 and is broken in run 2."
+>
+
+- A (home) and D (community hall) are companions with repeating off; they can't hear each other.
+- B and C are dedicated repeaters. Each reaches A and D, and they hear each other.
+- In run 2, the B–D link fails in both directions; everything else is unchanged.
+
+</FlowDiagram>
+
+Settings: one community-agreed frequency, bandwidth, SF and CR on all four, recorded with the date checked. For
+airtime the report uses the course's teaching RF profile and an assumed 40-byte frame: 82.176 ms per transmission. <Cite ids="CUR-C21" />
+
+### 2. Predictions
+
+| Phase | Transmissions | Airtime | Rule |
+|---|---|---|---|
+| First DM A→D floods; B and C relay | 3 (A, B, C) | 246.528 ms | Unknown path floods; each repeater forwards its first copy <Cite ids="MC-008 MC-010" /> |
+| D returns PATH+ACK by flood | 3 (D, B, C) | 246.528 ms | D received B's copy first, so the path is `[b2]` |
+| A sends its returned path directly via B | 2 (A, B) | 164.352 ms | Reciprocal path learning |
+| Each later DM: direct via B, ACK direct back | 4 (A, B, D, B) | 328.704 ms | Stored path; next relay consumes its entry <Cite ids="MC-009" /> |
+
+Prediction: route A→B→D; 3 + 3 + 2 = 8 transmissions, so 657.408 ms of airtime to learn the paths, then 328.704 ms per confirmed message (every frame assumed to be the same synthetic 40 bytes).
+
+### 3. Failure and capture (run 2: B–D broken)
+
+| Node | Observation | Measurement or inference |
+|---|---|---|
+| A | DM sent, no confirmation within the wait | Measurement |
+| B | Received and forwarded the direct packet | Measurement (B's counters) |
+| C | Heard A's packet, not named, did nothing | Measurement in the simulation trace |
+| D | Nothing displayed | Measurement |
+| A's conclusion | "D unreachable" | **Inference, and not supported:** A can't tell a broken hop from D being off or an ACK lost on the way back |
+
+C doesn't step in: only the named relay forwards a direct packet. <Cite ids="MC-011" />
+
+### 4. One variable, retest
+
+**The one change:** reset A's stored path to D in the app. Nothing else is touched. The reset itself transmits
+nothing. <Cite ids="MC-012" />
+
+Retest, 10 numbered messages: the first floods (A, B, C; B's copy dies at D), D receives C's copy and returns PATH+ACK
+`[c3]` by flood (D, C, B), A sends its returned path via C (A, C). Then 9 more go direct via C.
+
+| Run | Scheduled | Displayed at D | ACKs at A | PDR |
+|---|---|---|---|---|
+| Run 2 before the change (simulated) | 10 | 0 | 0 | 0 % (0/10) |
+| Run 2 after the reset (simulated) | 10 | 10 | 10 | 100 % (10/10) |
+
+Recovery airtime: 3 + 3 + 2 = 8 transmissions, 657.408 ms, then 328.704 ms per confirmed message as before. <Cite ids="CUR-C21" />
+
+### 5. Explanation
+
+The failure was a stale stored path, not a radio problem between A and the repeaters: A's packets reached B in
+both runs. MeshCore direct packets follow the stored path only, so C, though it could reach D, stayed quiet.
+Resetting the path made the next DM flood, which found the working branch through C, and D's returned path
+replaced `[b2]` with `[c3]`. <Cite ids="MC-008 MC-011 MC-012" /> The 10/10 result is a **simulated** sample with no
+loss model; on air, the same change would need repeated runs and a sample size beside every percentage. <Cite ids="CUR-C22" />
+Firmware doesn't reroute automatically; whether an app retries and resets for you is app behavior. <Cite ids="MC-013" />
+
+*Meshtastic variant:* break A's link to its preferred next hop instead. The last retransmission drops the preference
+and floods, so the message gets through C without user action, at the cost of three attempts. <Cite ids="MT-C11 MT-C12" />
+
+### 6. Privacy, compliance and maintenance plan
+
+- **Privacy:** companions' adverts don't include location; test messages are numbered, not personal; no bridge; no
+  logs with coordinates. Peer keys compared in person.
+- **Compliance:** operating as unlicensed devices, so no protected frequency and no harmful interference. <Cite ids="REG-C01" />
+  Each node's grant to be looked up by FCC ID before any on-air run; not yet done for these boards. <Cite ids="REG-C06" />
+  Outside the US: start at the national regulator. <Cite ids="CUR-C24" />
+- **Maintenance:** repeaters' admin passwords changed from the default <Cite ids="MC-024" />; monthly advisory check,
+  remembering MeshCore fixes land only in the latest release <Cite ids="MC-032" />; repeater hosts' permission recorded;
+  no outdoor work in storms and outdoor wiring by a qualified installer. <Cite ids="HW-C10" />
+
+Self-score: 3 on every criterion, capped at 20.
+
+## Your turn
+
+Pick a different failure: make **D→C** fail while C→D still works, after the reset. Predict what A and D each see,
+then decide the one variable you'd change.
+
+<details>
+<summary>Model answer</summary>
+
+D still displays A's direct messages (A→C→D works), but D's ACKs can't get back through C. A sees "not confirmed"
+while D's screen shows every message: delivery is 10/10, confirmation 0/10. <Cite ids="MC-030" /> With B–D still
+broken, D has **no** working outbound link, so no path reset can help: a reset only changes which route a packet
+tries. The one variable to change is physical: restore a return link (for example, repair B–D, or move D where it can
+transmit to B). Then retest and report delivery and confirmation separately.
+</details>
+
+## Optional extension: two or three real radios
+
+Only with radios you're allowed to operate, settings checked with your community, and a grant lookup done.
+
+- **Two radios:** repeat Module 03 or 05 and one drill. Log every run in the test log.
+- **Three radios:** the middle node relays. The hard part is making the end nodes genuinely unable to hear each
+  other: use distance or buildings, never removed antennas or detuned settings.
+- **Real frictions the simulation hides:** pairing and app quirks, clock and timing variation, other people's traffic
+  on the channel, weather and people moving.
+- **Cadence:** keep test traffic gentle, a few short messages per minute at most, start with a short run, change one
+  thing per repeat, and coordinate repeated tests out of band. <Cite ids="NTX-C05 CUR-C23" />
+- Keep the hardware run and the simulated run in separate sections of the report.
+
+## Operator reference
+
+| Need | Where |
+|---|---|
+| Printable field checklist | [Field checklist](../../reference/field-checklist/) |
+| Blank test log (CSV) and capstone export | [Field planner and capstone workbench](../../labs/field-planner/) |
+| Read-only command-line exercises | [Operator tools appendix](../../appendix/operator-tools/) |
+| Local MQTT boundary exercise | [Local MQTT appendix](../../appendix/local-mqtt/) |
+| Firmware and client compatibility notes | [Baselines](../../reference/baselines/) |
+| Every claim and its evidence | [Claim ledger](../../reference/claims/) and [source registry](../../reference/sources/) |
+| Terms | [Glossary](../../glossary/) |
+| Protocol comparison tables | [Comparison](../../comparison/) |
+| Labs | [RF sandbox](../../labs/rf-sandbox/), [routing playground](../../labs/routing-playground/), [packet inspector](../../labs/packet-inspector/), [field planner](../../labs/field-planner/) |
+
+## Knowledge check
+
+<details>
+<summary>1. Why must predictions come before the run?</summary>
+
+A prediction written afterwards bends to fit the result. Writing it first is what lets the retest show whether you
+understood the system.
+</details>
+
+<details>
+<summary>2. In the worked solution, why isn't "D unreachable" a valid conclusion from A's view?</summary>
+
+A only measured a missing confirmation. A broken hop, D powered off and a lost ACK all look the same from A. <Cite ids="MC-030" />
+</details>
+
+<details>
+<summary>3. Why is a 10/10 simulated retest not evidence that the fix works on air?</summary>
+
+The simulation has no loss, collisions or timing variation. It shows the mechanism, not the delivery rate. A field
+claim needs repeated runs with sample sizes. <Cite ids="CUR-C22" />
+</details>
+
+<details>
+<summary>4. You changed the path and the antenna height between runs. What can you conclude?</summary>
+
+Only that the combination changed the result. Undo one and retest to separate them. <Cite ids="CUR-C23" />
+</details>
+
+<details>
+<summary>Deeper dive: grading your own report honestly</summary>
+
+Look for the sentences in your explanation that a reader can't check: those are inferences. Each should either be
+labeled as one or be backed by a measurement or a claim ID. Then look at every percentage: does it have its sample
+size next to it? If both checks pass, your report is doing what a field engineer's report should.
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="CUR-C21 CUR-C22 CUR-C23 CUR-C24 MC-008 MC-009 MC-010 MC-011 MC-012 MC-013 MC-024 MC-030 MC-032 MT-C11 MT-C12 REG-C01 REG-C06 HW-C10 NTX-C05" />
+- Sources: <Cite ids="MC-S10 MC-S11 MC-S12 MC-S20 RF-S01" />
+- Course reference: [baselines](../../reference/baselines/), [corrections](../../reference/corrections/).
+
+## Next
+
+Previous: [Module 11: Compare and choose](../11-compare-choose/).
+You've reached the end of the numbered course. Go back to the [course outline](../../curriculum/), revisit a lab, or
+take the optional hardware extension above.
+
+<ProgressToggle page="modules/12-capstone-operator-reference" />

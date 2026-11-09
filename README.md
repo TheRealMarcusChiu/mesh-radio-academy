@@ -8,38 +8,44 @@ static site built with [Astro](https://astro.build) and
 Intended address: <https://therealmarcuschiu.github.io/mesh-radio-academy/>
 (the host is provisional until GitHub Pages is configured).
 
-## Status: first vertical slice
+## Status: lessons complete, labs and final integration pending
 
-What exists today:
+Not deployed. What this checkout contains:
 
-- **Modules 00–02** (start here, RF and LoRa foundations, hardware and first
-  boot), each with outcomes, prerequisites, a worked example, an original
-  diagram with a text version, a prediction task, an explained knowledge
-  check, engineering detail, references and next steps;
-- a **routing playground** (narrow first preset): a Meshtastic broadcast on a
-  four-node diamond and a MeshCore known-path failure with explicit reset and
-  recovery, driven by a pure deterministic model with cited events and a
-  no-JavaScript text walkthrough;
+- **All 13 modules (00–12)**, each with outcomes, prerequisites, a worked
+  example, an original diagram with a text version, a prediction or hands-on
+  task, an explained knowledge check, a deeper dive, references and
+  previous/next links. Every exercise has a no-hardware path;
+- **reference pages**: glossary, protocol comparison, operator-tools and local
+  MQTT appendices, printable field checklist, and the lab index;
 - an **RF sandbox** (Lab A): LoRa airtime for SF7–12 at 125/250/500 kHz from
   the SX1276 datasheet formula, plus a link budget with an assumed obstruction,
   using the pure functions in `src/lib/rf.ts` (inputs are validated, never
   clamped) and static worked examples that need no JavaScript;
+- a **routing playground** (narrow first preset): a Meshtastic broadcast on a
+  four-node diamond and a MeshCore known-path failure with explicit reset and
+  recovery, driven by a pure deterministic model with cited events and a
+  no-JavaScript walkthrough;
 - a **field planner and capstone workbench** (Lab D): a 3–5 node plan with
   schematic, a battery-runtime model that reuses Lab A airtime, a field log
   with delivery ratios and sample sizes, CSV downloads and exports, and a
   validated capstone report (JSON/text/print), all stored only in the browser
   (`src/lib/field.ts`, `docs/field-contract.md`);
-- the **evidence ledger** in `research/`: source registry, claim ledger and
-  baselines, rendered on the site's Reference pages;
-- the site shell: navigation, search, a dark field-guide theme (light theme
-  optional), mobile layout, and browser-local reading progress with reset.
+- the **evidence ledger** in `research/`: source registry, claim ledger
+  (including the `FLD` rows for Lab D and the `CUR` rows added with modules
+  03–12) and baselines, rendered on the site's Reference pages;
+- the site shell: navigation for every lesson and reference page, search, a
+  dark field-guide theme (light theme optional), mobile layout, and
+  browser-local reading progress with reset.
+
+Not in this checkout yet: the **packet inspector** lab and the routing lab's
+later presets. Each is built and reviewed in its own branch and joins here at
+integration. Routing airtime also stays out until it can use the RF calculator
+with stated packet bytes. See `docs/backlog.md`.
 
 The simulated message trace on the home page and in Module 00 is a generic
 **teaching model**, not either protocol's routing. No radio, board or app
 combination has been physically tested for this course.
-
-Not yet written on this branch: modules 03–12, packet inspector, glossary and
-appendices. See `docs/backlog.md` for carried items.
 
 There is no backend, account, analytics, telemetry, advertising or location
 access. Nothing is sent from the visitor's browser.
@@ -97,7 +103,7 @@ lesson:
   estimatedMinutes: 20
   prerequisites: ['modules/00-start-here']   # docs slugs; unknown slugs fail the build
   difficulty: beginner         # beginner | intermediate | advanced
-  sourceIds: ['RF-C09']        # IDs defined in research/claims.md or research/sources.md
+  sourceIds: ['RF-C09']        # IDs defined in research/claims.md or research/sources.md (MT, MC, RF, HW, REG, NTX, LW, CUR)
   baseline: 'firmware/client baseline the lesson was checked against'
   reviewed: 2026-11-09
 ```

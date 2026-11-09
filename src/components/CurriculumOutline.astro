@@ -12,8 +12,10 @@ const available = MODULES.filter((m) => m.slug).length;
 
 <div class="outline not-content">
   <p class="outline-status">
-    <strong>{available} of {MODULES.length} modules are available.</strong> The rest are being written; each
-    is published only after its sources are checked and the lesson is reviewed.
+    <strong>{available} of {MODULES.length} modules are available.</strong>
+    {available < MODULES.length
+      ? ' The rest are being written; each is published only after its sources are checked and the lesson is reviewed.'
+      : ' Each was published after its sources were checked and the lesson was reviewed.'}
   </p>
   <ol class="modules">
     {MODULES.map((m) => (

@@ -1,0 +1,121 @@
+---
+title: 'Appendix: a local MQTT boundary exercise'
+description: An optional Meshtastic extension that maps the RF and IP boundaries of an MQTT bridge, shows which side starts each transfer, and diagnoses an apparent radio delivery that really came through a broker, using captured synthetic data that stays on your computer.
+---
+
+import FlowDiagram from '../../../components/diagrams/FlowDiagram.astro';
+import Cite from '../../../components/Cite.astro';
+
+This exercise is **optional** and not needed for any lesson. It uses a synthetic event log, so you can do it with no
+broker and no radio. If you later try it with real equipment, keep the broker on your own computer or network, use
+fictional names, and never point a node at a public server for this. Nothing here was run against a broker or radio
+for this course. <Cite ids="MT-C22" />
+
+## The setup
+
+Two Meshtastic nodes, **N1** and **N2**, are far enough apart that they can't hear each other. Each is also a
+gateway: it has an IP connection to a **local** broker. On the shared test channel:
+
+| Setting | N1 | N2 | Why it matters |
+|---|---|---|---|
+| Server address | Local broker | Local broker | Unset means the default public server <Cite ids="CUR-C10" /> |
+| Channel uplink | On | On | Copies that channel's mesh traffic to the broker <Cite ids="CUR-C11" /> |
+| Channel downlink | On | On | Brings broker traffic back onto the radio <Cite ids="CUR-C11" /> |
+| Encryption enabled | On | On | Upload encrypted packets, not decoded ones <Cite ids="CUR-C10" /> |
+| JSON | Off | Off | JSON output is unencrypted <Cite ids="CUR-C10" /> |
+| Map reporting | Off | Off | Map reports are unencrypted and, when their own location switch is on, include a position at the map's own precision <Cite ids="CUR-C10 CUR-C27" /> |
+
+## The boundary
+
+<FlowDiagram
+  title="Local MQTT boundary between N1 and N2"
+  desc="Phone 1 hands a message to N1. N1 has no radio path to N2. N1's MQTT client publishes to a local broker. N2's MQTT client had subscribed and receives it, then N2 shows it and can transmit it on its own radio."
+  width={460}
+  height={200}
+  nodes={[
+    { id: 'p1', x: 60, y: 40, label: 'Phone 1', kind: 'app' },
+    { id: 'n1', x: 100, y: 160, label: 'N1', sub: 'gateway' },
+    { id: 'br', x: 230, y: 40, label: 'Local broker', sub: 'IP only', kind: 'bridge' },
+    { id: 'n2', x: 360, y: 160, label: 'N2', sub: 'gateway' },
+    { id: 'p2', x: 400, y: 40, label: 'Phone 2', kind: 'app' },
+  ]}
+  edges={[
+    { from: 'p1', to: 'n1', label: 'BLE', kind: 'wire' },
+    { from: 'n1', to: 'n2', label: 'no RF path', kind: 'broken', arrow: false },
+    { from: 'n1', to: 'br', label: 'N1 publishes', kind: 'ip' },
+    { from: 'br', to: 'n2', label: 'to subscriber', kind: 'ip' },
+    { from: 'n2', to: 'p2', label: 'BLE', kind: 'wire' },
+  ]}
+  caption="The only path between N1 and N2 is IP. Each node's MQTT client starts its own connection; the broker never starts one and never transmits radio."
+>
+
+1. Phone 1 sends a message to N1 over BLE.
+2. N1 can't reach N2 by radio (the dotted line with ✕).
+3. **N1 starts** its connection to the broker and **publishes** the packet.
+4. **N2 started** its own connection earlier and **subscribed**; the broker delivers to it.
+5. N2 passes it to Phone 2, and with downlink on, may also transmit it over its own radio.
+
+</FlowDiagram>
+
+## Captured synthetic event log
+
+**SYNTHETIC.** Invented events written in the format a careful tester would use. Not a capture, not a measurement,
+no real topics or addresses.
+
+| # | Time | Side | Who starts it | Event |
+|---|---|---|---|---|
+| 1 | 10:00:00 | IP | N2 | Connects to the local broker and subscribes to the test channel |
+| 2 | 10:00:05 | IP | N1 | Connects to the local broker |
+| 3 | 10:01:00 | BLE | Phone 1 | Hands "test 7" to N1 for the test channel |
+| 4 | 10:01:00 | RF | N1 | Transmits "test 7" over LoRa. Nobody in range relays it |
+| 5 | 10:01:01 | IP | N1 | Publishes the encrypted packet to the broker (uplink) |
+| 6 | 10:01:01 | IP | Broker → N2 | Delivers to N2's existing subscription |
+| 7 | 10:01:01 | — | N2 | Marks it via MQTT, decrypts with the channel key, shows it on Phone 2 |
+| 8 | 10:01:02 | RF | N2 | Transmits it over LoRa (downlink), header flag via-MQTT set |
+| 9 | 10:01:02 | — | N2 | Does **not** publish it again: already marked via MQTT <Cite ids="MT-C23" /> |
+
+## Diagnose the apparent radio delivery
+
+Phone 2 shows "test 7", and someone concludes "N1 reaches N2 over the air". Work it through:
+
+1. **Look for the via-MQTT flag** on the received packet: set. <Cite ids="CUR-C04" />
+2. **Check the log for RF hops:** event 4 shows N1's transmission was relayed by nobody; there's no RF event linking
+   N1 to N2.
+3. **Turn off one variable:** disable downlink on N2 (or disconnect N2 from the broker) and send "test 8". If Phone 2
+   no longer shows it, the radio path doesn't exist.
+4. **Write it up:** measurement "Phone 2 displayed test 7 at 10:01:01"; inference "delivered via the broker, not RF",
+   supported by the flag and by the retest.
+
+What the broker and anyone with access to it could see in this setup: the encrypted packet and its header
+(sender, destination, IDs, hop fields, channel hash), plus timing and the gateways' identities. With encryption off
+or JSON on, also the text. <Cite ids="CUR-C10 MT-C22" />
+
+## Variations to think through
+
+<details>
+<summary>What if N1 had JSON output enabled?</summary>
+
+The broker would also receive an unencrypted JSON version: the message text is now readable to anyone with broker
+access, whatever the channel key. <Cite ids="CUR-C10" />
+</details>
+
+<details>
+<summary>What if a third gateway N3 on the same broker had downlink on?</summary>
+
+N3 would also transmit "test 7" over its radio: more airtime in a place the message was never meant to go. The
+via-MQTT guard stops N2 and N3 from re-uploading it, but it doesn't prove every multi-gateway arrangement is free of
+loops. <Cite ids="MT-C23" />
+</details>
+
+<details>
+<summary>What if the server address were left blank?</summary>
+
+The node would use the default public server, so your test traffic would leave your network. That's why the setup
+table sets it explicitly. <Cite ids="CUR-C10" />
+</details>
+
+## References
+
+- Claims: <Cite ids="MT-C22 MT-C23 CUR-C04 CUR-C10 CUR-C11" />
+- Sources: <Cite ids="MT-S24 MT-S30 CUR-S06 CUR-S07" />
+- Teaching context: [Module 04](../../modules/04-meshtastic-under-the-hood/) and [Module 09](../../modules/09-troubleshooting-field-tests/).

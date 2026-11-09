@@ -12,12 +12,13 @@ const href = (id: string) =>
 <span class="cite">[{ids.map((id, i) => (<>{i > 0 && ', '}<a href={href(id)}>{id}</a></>))}]</span>
 
 <style>
+  /* A long group wraps between IDs (after each ", "); a single ID never splits. */
   .cite {
     font-size: var(--sl-text-xs);
-    white-space: nowrap;
     color: var(--sl-color-gray-3);
   }
   .cite a {
     color: inherit;
+    white-space: nowrap;
   }
 </style>
