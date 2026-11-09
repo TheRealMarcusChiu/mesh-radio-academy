@@ -20,7 +20,9 @@ const idx = (events: SimEvent[], pred: (e: SimEvent) => boolean) => events.findI
 
 test('fixtures are versioned and the named seeds order B and C as documented', () => {
   assert.equal(FIXTURE_VERSION, 1);
-  assert.equal(MODEL_VERSION, 1);
+  // Engine is version 2; version-1 configs still produce version-1 traces (tests/routing-v2.test.ts).
+  assert.equal(MODEL_VERSION, 2);
+  assert.equal(simulate(mtDiamond(), []).modelVersion, 1);
   assert.deepEqual(relayOrder(SEEDS.bFirst, ['C', 'B']), ['B', 'C']);
   assert.deepEqual(relayOrder(SEEDS.cFirst, ['B', 'C']), ['C', 'B']);
 });
@@ -213,7 +215,8 @@ test('validateScenario rejects malformed serialized configs', () => {
   const good = mtDiamond();
   assert.doesNotThrow(() => validateScenario(good));
   const bad: unknown[] = [
-    { ...good, version: 2 },
+    { ...good, version: 3 },
+    { ...good, version: '1' },
     { ...good, links: [...good.links, { from: 'A', to: 'Z' }] },
     { ...good, nodes: [...good.nodes, good.nodes[0]] },
     { ...good, traffic: { ...good.traffic, hopLimit: 8 } },

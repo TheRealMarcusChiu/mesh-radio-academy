@@ -8,7 +8,7 @@ static site built with [Astro](https://astro.build) and
 Intended address: <https://therealmarcuschiu.github.io/mesh-radio-academy/>
 (the host is provisional until GitHub Pages is configured).
 
-## Status: lessons complete, labs and final integration pending
+## Status: lessons and all four labs integrated, not yet published
 
 Not deployed. What this checkout contains:
 
@@ -22,26 +22,32 @@ Not deployed. What this checkout contains:
   the SX1276 datasheet formula, plus a link budget with an assumed obstruction,
   using the pure functions in `src/lib/rf.ts` (inputs are validated, never
   clamped) and static worked examples that need no JavaScript;
-- a **routing playground** (narrow first preset): a Meshtastic broadcast on a
-  four-node diamond and a MeshCore known-path failure with explicit reset and
-  recovery, driven by a pure deterministic model with cited events and a
-  no-JavaScript walkthrough;
+- a **routing playground** (Lab B): Meshtastic managed flooding and MeshCore
+  known-path forwarding on five topology presets (two nodes, line, diamond,
+  mobile, sparse), including the Meshtastic DM final-retry fallback, MeshCore
+  first-contact path learning and asymmetric links, driven by a pure
+  deterministic model with cited events, a no-JavaScript walkthrough and an
+  airtime panel priced by the Lab A calculator with labeled hypothetical sizes
+  (`src/lib/routing.ts`, `src/lib/routing-airtime.ts`);
+- a **packet inspector and mismatch bench** (Lab C): synthetic Meshtastic and
+  MeshCore packets in over-the-air, phone-link and application views, with
+  byte offsets only where the pinned firmware layout was read, and a
+  one-change-at-a-time mismatch bench (`src/lib/packet-inspector.ts`,
+  `src/lib/mismatch.ts`);
 - a **field planner and capstone workbench** (Lab D): a 3–5 node plan with
   schematic, a battery-runtime model that reuses Lab A airtime, a field log
   with delivery ratios and sample sizes, CSV downloads and exports, and a
   validated capstone report (JSON/text/print), all stored only in the browser
   (`src/lib/field.ts`, `docs/field-contract.md`);
 - the **evidence ledger** in `research/`: source registry, claim ledger
-  (including the `FLD` rows for Lab D and the `CUR` rows added with modules
-  03–12) and baselines, rendered on the site's Reference pages;
+  (including the `FLD` rows for Lab D, the `RT` rows for the routing and
+  packet labs, and the `CUR` rows added with modules 03–12) and baselines,
+  rendered on the site's Reference pages;
 - the site shell: navigation for every lesson and reference page, search, a
   dark field-guide theme (light theme optional), mobile layout, and
   browser-local reading progress with reset.
 
-Not in this checkout yet: the **packet inspector** lab and the routing lab's
-later presets. Each is built and reviewed in its own branch and joins here at
-integration. Routing airtime also stays out until it can use the RF calculator
-with stated packet bytes. See `docs/backlog.md`.
+Known limits and deferred items are listed in `docs/backlog.md`.
 
 The simulated message trace on the home page and in Module 00 is a generic
 **teaching model**, not either protocol's routing. No radio, board or app
@@ -63,7 +69,7 @@ access. Nothing is sent from the visitor's browser.
 |---|---|
 | `npm ci` | Install the exact locked dependencies |
 | `npm run dev` | Start the local dev server at `http://localhost:4321/mesh-radio-academy/` |
-| `npm test` | Run unit tests (`node --test`): routing model, RF airtime and link budget, field planner/battery/PDR/CSV/report/storage, ledger integrity, lab wiring, layer trace, progress storage, lesson schema |
+| `npm test` | Run unit tests (`node --test`): routing model and airtime, packet inspector and mismatch bench, RF airtime and link budget, field planner/battery/PDR/CSV/report/storage, ledger integrity, lab wiring, layer trace, progress storage, lesson schema |
 | `npm run check` | Astro and TypeScript diagnostics |
 | `npm run build` | Build the static site to `dist/` under the `/mesh-radio-academy/` base path |
 | `npm run check:links` | After a build, confirm every internal link, asset and `#anchor` in `dist/` resolves under the base path |
@@ -103,7 +109,7 @@ lesson:
   estimatedMinutes: 20
   prerequisites: ['modules/00-start-here']   # docs slugs; unknown slugs fail the build
   difficulty: beginner         # beginner | intermediate | advanced
-  sourceIds: ['RF-C09']        # IDs defined in research/claims.md or research/sources.md (MT, MC, RF, HW, REG, NTX, LW, CUR)
+  sourceIds: ['RF-C09']        # IDs defined in research/claims.md or research/sources.md (MT, MC, RF, HW, REG, NTX, LW, FLD, CUR, RT)
   baseline: 'firmware/client baseline the lesson was checked against'
   reviewed: 2026-11-09
 ```

@@ -122,13 +122,30 @@ test('Module 02 points forward to the real Module 03, not "being written"', () =
   assert.doesNotMatch(next, /being written/);
 });
 
-test('lab index links all four frozen lab routes base-relatively and marks unbuilt labs as pending, not done', () => {
+test('lab index links all four frozen lab routes base-relatively, each a real integrated page marked available', () => {
   const index = read('src/content/docs/labs/index.mdx');
-  for (const lab of LAB_SLUGS) assert.match(index, new RegExp(`\\]\\(\\./${lab}/\\)`), `lab index lacks ${lab}`);
-  for (const lab of ['rf-sandbox', 'packet-inspector', 'field-planner']) {
-    assert.ok(!existsSync(`src/content/docs/labs/${lab}.mdx`), `${lab} must come from its own lane, not a stub here`);
+  for (const lab of LAB_SLUGS) {
+    assert.match(index, new RegExp(`\\]\\(\\./${lab}/\\)`), `lab index lacks ${lab}`);
+    assert.ok(existsSync(`src/content/docs/labs/${lab}.mdx`), `${lab} page missing`);
+    assert.match(index, new RegExp(`\\]\\(\\./${lab}/\\)[^\\n]*\\| Available \\|`), `${lab} not marked available`);
   }
-  assert.match(index, /integration pending/i);
+  assert.doesNotMatch(index, /integration pending/i);
+});
+
+test('combined build: every learner entry point reaches all four labs with no stale "pending" status', () => {
+  const config = read('astro.config.mjs');
+  for (const lab of LAB_SLUGS) assert.match(config, new RegExp(`'labs/${lab}'`), `sidebar lacks labs/${lab}`);
+  for (const [file, re] of [
+    ['src/content/docs/curriculum.mdx', (lab: string) => `\\(\\.\\./labs/${lab}/\\)`],
+    ['src/content/docs/about.mdx', (lab: string) => `\\(\\.\\./labs/${lab}/\\)`],
+    ['src/pages/index.astro', (lab: string) => `labs/${lab}/`],
+  ] as const) {
+    const text = read(file);
+    for (const lab of LAB_SLUGS) assert.match(text, new RegExp(re(lab)), `${file} lacks ${lab}`);
+    assert.doesNotMatch(text, /integration pending|still (being )?(integrated|joining)/i, `${file} has stale status`);
+  }
+  assert.doesNotMatch(read('src/content/docs/start-here.mdx'), /which are available in this build/);
+  assert.match(read('src/content/docs/modules/12-capstone-operator-reference.mdx'), /\(\.\.\/\.\.\/labs\/field-planner\/\)/);
 });
 
 test('citation groups can wrap between IDs while each ID stays whole', () => {

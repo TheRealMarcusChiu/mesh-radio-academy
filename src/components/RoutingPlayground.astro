@@ -1,36 +1,54 @@
 ---
-import { simulate, OMITTED_EFFECTS, type SimEvent } from '../lib/routing.ts';
-import { mtDiamond, mcKnownPath, SEEDS } from '../fixtures/routing.ts';
-import Cite from './Cite.astro';
+import { simulate, deliveryHops, OMITTED_EFFECTS, type SimEvent, type Trace, type UserAction } from '../lib/routing.ts';
+import { mtDiamond, mcKnownPath } from '../fixtures/routing.ts';
+import { PRESETS, VIEWBOX, labelY, bothWays, preset, presetScenario, mtDm, mcFirstContact, mcAsymmetric } from '../fixtures/routing-presets.ts';
+import LabCite from './LabCite.astro';
+import { routingAirtime, DEFAULT_RF, HYPOTHETICAL_BYTES, FRAME_KINDS } from '../lib/routing-airtime.ts';
+import { SPREADING_FACTORS, BANDWIDTHS_KHZ, CODING_RATES, PREAMBLE_RANGE, PAYLOAD_RANGE } from '../lib/rf.ts';
+
+const FRAME_LABELS: Record<string, string> = { text: 'Message (DM or broadcast text)', ack: 'ACK', path: 'PATH (MeshCore)', advert: 'Advert (MeshCore)', unknown: 'Unrecognized frame type' };
 
 // Static walkthroughs: the same model, run at build time, readable without JavaScript.
-const walkthroughs: { title: string; setup: string; events: SimEvent[] }[] = [
-  {
-    title: 'Meshtastic: B and C can hear each other',
-    setup: 'Channel broadcast from A, hop limit 1, all CLIENT with rebroadcast ALL, seed 3 (B first).',
-    events: simulate(mtDiamond(), [{ type: 'send' }]).events,
-  },
-  {
-    title: 'Meshtastic: B and C cannot hear each other',
-    setup: 'Same as above, with the B–C link removed.',
-    events: simulate(mtDiamond({ bcAudible: false }), [{ type: 'send' }]).events,
-  },
-  {
-    title: 'MeshCore: broken B–D, explicit reset, recovery through C',
-    setup: 'A stores path [b2] to D and D stores [b2] to A. B–D is broken. The user sends, resets A’s path to D, then sends again.',
-    events: simulate(mcKnownPath(), [{ type: 'send' }, { type: 'reset-path', node: 'A', dest: 'D' }, { type: 'send' }]).events,
-  },
+const SEND: UserAction = { type: 'send' };
+const mobile = preset('mobile');
+const moveD: UserAction = { type: 'set-links', node: 'D', label: mobile.move!.label, links: bothWays(mobile.move!.on) };
+const walk = (title: string, setup: string, trace: Trace) => ({ title, setup, trace });
+const walkthroughs = [
+  walk('Meshtastic: B and C can hear each other', 'Diamond. Channel broadcast from A, hop limit 1, all CLIENT with rebroadcast ALL, seed 3 (B first).', simulate(mtDiamond(), [SEND])),
+  walk('Meshtastic: B and C cannot hear each other', 'Same as above, with the B–C link removed.', simulate(mtDiamond({ bcAudible: false }), [SEND])),
+  walk('Meshtastic DM: saved next hop B works', 'Diamond without B–C. A’s saved next hop toward D is B; B’s is D. A sends a DM with want-ACK, hop limit 3.', simulate(mtDm({ abWorks: true }), [SEND])),
+  walk('Meshtastic DM: saved next hop B unreachable, final retry floods', 'As above, but A–B is unavailable. C can hear A and D.', simulate(mtDm(), [SEND])),
+  walk('Meshtastic: hop limit as a constraint on a sparse chain', 'Sparse neighborhood, channel broadcast from A with hop limit 1. D is three links away.', simulate(presetScenario('sparse', 'meshtastic', { hopLimit: 1 }), [SEND])),
+  walk('MeshCore: broken B–D, explicit reset, recovery through C', 'Diamond. A stores path [b2] to D and D stores [b2] to A. B–D is broken. The user sends, resets A’s path to D, then sends again.', simulate(mcKnownPath(), [SEND, { type: 'reset-path', node: 'A', dest: 'D' }, SEND])),
+  walk('MeshCore: first contact, adverts, flooded exchange, then direct', 'Diamond, B–D working. Nobody has contacts or paths. A tries to send, D sends a flooded advert, A sends a zero-hop advert (only B and C hear it), then a flooded one; then A sends twice.', simulate(mcFirstContact(), [SEND, { type: 'advert', node: 'D', scope: 'flood' }, { type: 'advert', node: 'A', scope: 'zero-hop' }, { type: 'advert', node: 'A', scope: 'flood' }, SEND, SEND])),
+  walk('MeshCore: one-way link, delivered but unconfirmed', 'Line A–B–D. B can reach D, but D cannot reach B. Nobody has a stored path.', simulate(mcAsymmetric(), [SEND])),
+  walk('MeshCore: the mobile node moves', 'Mobile preset. A and D store [b2]. A sends, then the learner moves D next to C, A sends again, resets its path and sends a third time.', simulate(presetScenario('mobile', 'meshcore'), [SEND, moveD, SEND, { type: 'reset-path', node: 'A', dest: 'D' }, SEND])),
 ];
 
-const pos: Record<string, [number, number]> = { A: [60, 130], B: [200, 46], C: [200, 214], D: [340, 130] };
-const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
+// Static airtime worked example: the Meshtastic DM fallback walkthrough, priced by the accepted RF helper.
+const w = walkthroughs[3];
+const worked = routingAirtime(w.trace.events, { rf: DEFAULT_RF, bytes: HYPOTHETICAL_BYTES });
+const ms = (n: number | null) => (n === null ? 'unavailable' : n.toFixed(3));
+
+const trim = (a: [number, number], b: [number, number], r = 24) => {
+  const [dx, dy] = [b[0] - a[0], b[1] - a[1]];
+  const len = Math.hypot(dx, dy);
+  return [a[0] + (dx * r) / len, a[1] + (dy * r) / len, b[0] - (dx * r) / len, b[1] - (dy * r) / len];
+};
+const LINK_OPTIONS = (a: string, b: string) => [
+  ['both', `${a} ↔ ${b}`],
+  ['ab', `${a} → ${b} only`],
+  ['ba', `${b} → ${a} only`],
+  ['none', 'no link'],
+];
 ---
 
 <section class="playground not-content" data-playground aria-labelledby="pg-title">
   <h2 id="pg-title">Routing playground</h2>
   <p class="pg-note">
-    A teaching model on one small graph. Both protocols get the same nodes and links; only the forwarding
-    rules differ. Event order is set by a seed, not by real radio timing, and nothing here predicts range.
+    A teaching model on small graphs. Both protocols get the same nodes, links, seed and playhead; only the
+    forwarding rules differ. Links are your settings, not radio predictions. Event order comes from a seed,
+    not real radio timing, and nothing here predicts range.
   </p>
 
   <noscript>
@@ -40,44 +58,93 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
   <div class="pg-ui" data-ui hidden>
     <div class="pg-controls">
       <fieldset>
-        <legend>Protocol</legend>
-        <label><input type="radio" name="pg-protocol" value="meshtastic" checked /> Meshtastic</label>
-        <label><input type="radio" name="pg-protocol" value="meshcore" /> MeshCore</label>
-      </fieldset>
-
-      <fieldset>
-        <legend>Shared graph</legend>
-        <label><input type="checkbox" data-bc checked /> B and C can hear each other</label>
-        <label><input type="checkbox" data-bd checked /> B–D link works</label>
+        <legend>Scenario</legend>
         <label class="pg-select">
-          Tie order
-          <select data-seed>
-            <option value={SEEDS.bFirst}>Seed {SEEDS.bFirst}: B acts first</option>
-            <option value={SEEDS.cFirst}>Seed {SEEDS.cFirst}: C acts first</option>
+          Topology
+          <select data-preset>
+            {PRESETS.map((p) => <option value={p.id} selected={p.id === 'diamond'}>{p.label}</option>)}
           </select>
         </label>
+        <p class="pg-hint" data-preset-summary></p>
+        <label><input type="radio" name="pg-protocol" value="meshtastic" checked /> Meshtastic</label>
+        <label><input type="radio" name="pg-protocol" value="meshcore" /> MeshCore</label>
+        <label class="pg-select" data-only="meshtastic">
+          Traffic
+          <select data-traffic>
+            <option value="broadcast">Channel broadcast from A</option>
+            <option value="dm">Direct message A → D</option>
+          </select>
+        </label>
+        <label data-only="meshcore"><input type="checkbox" data-strangers /> Start as strangers (no contacts, no paths)</label>
       </fieldset>
 
       <fieldset>
-        <legend>Roles of B and C</legend>
-        {['B', 'C'].map((n) => (
-          <label class="pg-select">
-            {n}
-            <select data-role={n}>
-              <option value="CLIENT" data-for="meshtastic">CLIENT</option>
-              <option value="CLIENT_MUTE" data-for="meshtastic">CLIENT_MUTE</option>
-              <option value="ROUTER" data-for="meshtastic">ROUTER</option>
-              <option value="repeater" data-for="meshcore">Repeater</option>
-              <option value="companion" data-for="meshcore">Companion (repeat off)</option>
-            </select>
-          </label>
+        <legend>Links (who can hear whom)</legend>
+        {PRESETS.map((p) => (
+          <div class="pg-group" data-for-preset={p.id} hidden>
+            {p.pairs.map(([a, b]) => (
+              <label class="pg-select">
+                {a}–{b}
+                <select data-link={`${a}-${b}`}>
+                  {LINK_OPTIONS(a, b).map(([v, t]) => <option value={v}>{t}</option>)}
+                </select>
+              </label>
+            ))}
+          </div>
         ))}
+      </fieldset>
+
+      <fieldset>
+        <legend>Roles and constraints</legend>
+        {PRESETS.map((p) => (
+          <div class="pg-group" data-for-preset={p.id} hidden>
+            {p.relays.length === 0 && <p class="pg-hint">No relay in this topology.</p>}
+            {p.relays.map((n) => (
+              <label class="pg-select">
+                {n}
+                <select data-role={n}>
+                  <option value="CLIENT" data-for="meshtastic">CLIENT</option>
+                  <option value="CLIENT_MUTE" data-for="meshtastic">CLIENT_MUTE</option>
+                  <option value="ROUTER" data-for="meshtastic">ROUTER</option>
+                  <option value="repeater" data-for="meshcore">Repeater</option>
+                  <option value="companion" data-for="meshcore">Companion (repeat off)</option>
+                </select>
+              </label>
+            ))}
+          </div>
+        ))}
+        <label class="pg-select" data-only="meshtastic">
+          Hop limit
+          <select data-hop>{[0, 1, 2, 3, 4, 5, 6, 7].map((h) => <option value={h}>{h}</option>)}</select>
+        </label>
+        <label class="pg-select" data-only="meshtastic" data-dm-only>
+          A’s saved next hop toward D
+          <select data-nexthop></select>
+        </label>
+        <label class="pg-select" data-only="meshcore">
+          A’s stored path to D
+          <select data-path></select>
+        </label>
+        <label class="pg-select">
+          Seed (tie order)
+          <input type="number" inputmode="numeric" min="0" max="4294967295" step="1" value="3" data-seed aria-describedby="pg-seed-note" />
+        </label>
+        <p class="pg-hint" id="pg-seed-note" data-seed-note></p>
       </fieldset>
     </div>
 
     <div class="pg-actions" role="group" aria-label="Playground actions">
       <button type="button" class="btn btn-primary" data-send>Send</button>
-      <button type="button" class="btn" data-resetpath hidden>Reset A’s path to D</button>
+      <button type="button" class="btn" data-resetpath data-only="meshcore">Reset A’s path to D</button>
+      <span class="pg-advert" data-only="meshcore">
+        <label class="pg-select">
+          Advert from
+          <select data-advert-node><option>A</option><option>D</option></select>
+        </label>
+        <button type="button" class="btn" data-advert="zero-hop">Zero-hop advert</button>
+        <button type="button" class="btn" data-advert="flood">Flooded advert</button>
+      </span>
+      <button type="button" class="btn" data-move hidden></button>
       <button type="button" class="btn" data-step>Step</button>
       <button type="button" class="btn" data-run>Run to end</button>
       <button type="button" class="btn" data-reset>Reset scenario</button>
@@ -85,38 +152,106 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     <p class="pg-hint" data-hint></p>
 
     <div class="pg-main">
-      <svg viewBox="0 -20 400 304" class="pg-graph" role="img" aria-labelledby="pg-graph-title" data-graph>
-        <title id="pg-graph-title" data-graph-title>Diamond graph of nodes A, B, C and D</title>
-        {edges.map((e) => {
-          const [a, b] = e.split('-');
-          const [x1, y1] = pos[a];
-          const [x2, y2] = pos[b];
-          return (
-            <g class="edge" data-edge={e}>
-              <line x1={x1} y1={y1} x2={x2} y2={y2} />
-              <text x={(x1 + x2) / 2 + (e === 'B-C' ? 8 : 0)} y={(y1 + y2) / 2 - 4} class="edge-label" data-edge-label />
-            </g>
-          );
-        })}
-        {Object.entries(pos).map(([id, [x, y]]) => (
-          <g class="node" data-node={id}>
-            <circle cx={x} cy={y} r="22" />
-            <text x={x} y={y + 6} text-anchor="middle" class="node-id">{id}</text>
-            <text x={x} y={y + (id === 'C' ? 40 : -30)} text-anchor="middle" class="node-role" data-role-label />
-            <text x={x} y={y + (id === 'C' ? 54 : -44)} text-anchor="middle" class="node-status" data-status />
-          </g>
+      <div>
+        {PRESETS.map((p) => (
+          <svg viewBox={VIEWBOX.join(' ')} class="pg-graph" role="img" aria-labelledby={`pg-graph-${p.id}`} data-graph={p.id}>
+            <title id={`pg-graph-${p.id}`} data-graph-title>{p.label}</title>
+            <defs>
+              <marker id={`pg-arrow-${p.id}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" class="pg-arrow" />
+              </marker>
+            </defs>
+            {p.pairs.map(([a, b]) => {
+              const [x1, y1, x2, y2] = trim(p.pos[a], p.pos[b]);
+              return (
+                <g class="edge" data-edge={`${a}-${b}`}>
+                  <line x1={x1} y1={y1} x2={x2} y2={y2} />
+                  <text x={(x1 + x2) / 2 + 6} y={(y1 + y2) / 2 - 6} class="edge-label" data-edge-label />
+                </g>
+              );
+            })}
+            {Object.entries(p.pos).map(([id, [x, y]]) => (
+              <g class="node" data-node={id}>
+                <circle cx={x} cy={y} r="22" />
+                <text x={x} y={y + 6} text-anchor="middle" class="node-id">{id}</text>
+                <text x={x} y={labelY(p, id, 'role')} text-anchor="middle" class="node-role" data-role-label />
+                <text x={x} y={labelY(p, id, 'status')} text-anchor="middle" class="node-status" data-status />
+              </g>
+            ))}
+          </svg>
         ))}
-      </svg>
+        <p class="pg-hint">Solid line: both directions. Arrow: one direction only. Dashed: no link. A thick line marks the transmitter of the current tick.</p>
+      </div>
 
       <div class="pg-side">
         <h3>State at this step</h3>
         <ul class="pg-state" data-state></ul>
+        <h3>What A can know</h3>
+        <p class="pg-sender" data-sender></p>
         <table class="pg-metrics">
           <caption>Counts so far</caption>
           <tbody data-metrics></tbody>
         </table>
+        <p class="pg-hint">Airtime for these transmissions is below the graph.</p>
       </div>
     </div>
+
+    <section class="pg-air" aria-labelledby="pg-air-title">
+      <h3 id="pg-air-title">Airtime of the transmissions so far</h3>
+      <p class="pg-hint">
+        Each radio transmission revealed up to the playhead is charged once with the course's LoRa airtime
+        calculator: origin sends, retries, relays and control frames. Receptions, cancelled relays, path resets and
+        moves cost nothing. This is time on air for the packets counted, not wall-clock time, duty-cycle compliance,
+        battery life, collisions or a chip measurement. <LabCite ids={['RF-C01', 'RF-C02', 'RF-C05']} />
+      </p>
+      <div class="pg-controls">
+        <fieldset>
+          <legend>Shared RF settings (all nodes)</legend>
+          <label class="pg-select">Spreading factor
+            <select data-air="sf">{SPREADING_FACTORS.map((v) => <option value={v} selected={v === DEFAULT_RF.sf}>SF{v}</option>)}</select>
+          </label>
+          <label class="pg-select">Bandwidth
+            <select data-air="bandwidthKHz">{BANDWIDTHS_KHZ.map((v) => <option value={v} selected={v === DEFAULT_RF.bandwidthKHz}>{v} kHz</option>)}</select>
+          </label>
+          <label class="pg-select">Coding rate
+            <select data-air="codingRate">{CODING_RATES.map((v) => <option value={v} selected={v === DEFAULT_RF.codingRate}>4/{v + 4}</option>)}</select>
+          </label>
+          <label class="pg-select">Preamble (symbols)
+            <input type="number" inputmode="numeric" min={PREAMBLE_RANGE[0]} max={PREAMBLE_RANGE[1]} step="1" value={DEFAULT_RF.preambleSymbols} data-air="preambleSymbols" />
+          </label>
+          <label><input type="checkbox" data-air="explicitHeader" checked={DEFAULT_RF.explicitHeader} /> Explicit header</label>
+          <label><input type="checkbox" data-air="crc" checked={DEFAULT_RF.crc} /> Payload CRC</label>
+          <p class="pg-hint" data-air-de></p>
+        </fieldset>
+        <fieldset>
+          <legend>Assumed full PHY payload size per frame type</legend>
+          <p class="pg-hint">
+            The whole LoRa payload in bytes, including mesh header and encryption overhead, not the message text.
+            This lab has no verified frame lengths, so the sizes start blank (unknown).
+          </p>
+          {FRAME_KINDS.map((k) => (
+            <label class="pg-select">{FRAME_LABELS[k]}
+              <input type="number" inputmode="numeric" min={PAYLOAD_RANGE[0]} max={PAYLOAD_RANGE[1]} step="1" placeholder="unknown" data-air-bytes={k} />
+            </label>
+          ))}
+          <div class="pg-actions">
+            <button type="button" class="btn" data-air-hypo>Use hypothetical 32-byte frames</button>
+            <button type="button" class="btn" data-air-clear>Clear sizes</button>
+          </div>
+        </fieldset>
+      </div>
+      <p class="pg-air-status" role="status" data-air-status></p>
+      <ul class="pg-air-errors" data-air-errors></ul>
+      <div class="pg-scroll" tabindex="0" role="region" aria-label="Airtime by frame type">
+        <table class="pg-airtable">
+          <caption>By frame type, up to the playhead</caption>
+          <thead>
+            <tr><th scope="col">Frame type</th><th scope="col">Transmissions</th><th scope="col">Size assumed (bytes)</th><th scope="col">Per packet (ms)</th><th scope="col">Subtotal (ms)</th></tr>
+          </thead>
+          <tbody data-air-rows></tbody>
+        </table>
+      </div>
+    </section>
 
     <h3>Event log</h3>
     <p class="pg-hint">Each line is one event: teaching tick, node, what it did and why, with the evidence it rests on.</p>
@@ -131,15 +266,45 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
         <h3>{w.title}</h3>
         <p>{w.setup}</p>
         <ol>
-          {w.events.map((e) => (
+          {w.trace.events.map((e: SimEvent, i: number) => (
             <li>
-              <span class="pg-tick">t{e.time}</span> <strong>{e.node}</strong>: {e.reason}{' '}
-              <Cite ids={e.claims.join(' ')} />
+              <span class="pg-tick">t{e.time}</span> <strong>{e.node}</strong>: {e.reason}
+              {e.action === 'deliver' && ` (${deliveryHops(w.trace, i)} relay${deliveryHops(w.trace, i) === 1 ? '' : 's'} crossed)`}{' '}
+              <LabCite ids={e.claims} />
             </li>
           ))}
         </ol>
       </section>
     ))}
+  </details>
+
+  <details class="pg-walk">
+    <summary>Worked airtime example (no JavaScript needed)</summary>
+    <p>
+      Walkthrough: “{w.title}”. RF settings: SF{DEFAULT_RF.sf}, {DEFAULT_RF.bandwidthKHz} kHz, coding rate
+      4/{DEFAULT_RF.codingRate + 4}, {DEFAULT_RF.preambleSymbols}-symbol preamble (the calculator adds the fixed 4.25
+      symbols itself), explicit header, CRC on, low-data-rate optimization off. These are the RF lesson's worked
+      settings. <LabCite ids={['RF-C01', 'RF-C03']} /> Frame sizes are <strong>hypothetical</strong>: every frame is
+      assumed to be a 32-byte PHY payload. That is a teaching assumption, not a firmware or capture fact.
+    </p>
+    <div class="pg-scroll" tabindex="0" role="region" aria-label="Worked airtime example">
+      <table class="pg-airtable">
+        <caption>{worked.transmissions} transmissions, {worked.retries} of them retries</caption>
+        <thead>
+          <tr><th scope="col">Frame type</th><th scope="col">Transmissions</th><th scope="col">Size assumed (bytes)</th><th scope="col">Per packet (ms)</th><th scope="col">Subtotal (ms)</th></tr>
+        </thead>
+        <tbody>
+          {worked.rows.map((r) => (
+            <tr><th scope="row">{FRAME_LABELS[r.kind]}</th><td>{r.count}</td><td>{r.bytes ?? 'unknown'}</td><td>{ms(r.packetMs)}</td><td>{ms(r.subtotalMs)}</td></tr>
+          ))}
+          <tr><th scope="row">Total</th><td>{worked.transmissions}</td><td></td><td></td><td>{ms(worked.totalMs)}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>
+      Time on air of these transmissions only: not elapsed time, duty-cycle compliance, battery life, collisions or
+      a measurement. Real frame sizes differ by protocol and frame type. <LabCite ids={['RF-C05']} />
+    </p>
   </details>
 
   <details class="pg-walk">
@@ -149,20 +314,24 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
 </section>
 
 <script>
-  import { createController, type Controller, type SimEvent, type Metrics } from '../lib/routing.ts';
-  import { mtDiamond, mcKnownPath } from '../fixtures/routing.ts';
+  import { createController, deliveryHops, relayOrder, type Controller, type SimEvent, type Metrics, type Link, type ScenarioConfig, type UserAction } from '../lib/routing.ts';
+  import { PREFIXES, preset, presetScenario, bothWays, type Preset } from '../fixtures/routing-presets.ts';
+  import { routingAirtime, HYPOTHETICAL_BYTES, FRAME_KINDS, type FrameBytes } from '../lib/routing-airtime.ts';
+  import { requiresLowDataRateOptimize } from '../lib/rf.ts';
+
+  const FRAME_LABEL: Record<string, string> = { text: 'Message (DM or broadcast text)', ack: 'ACK', path: 'PATH (MeshCore)', advert: 'Advert (MeshCore)', unknown: 'Unrecognized frame type' };
 
   const METRIC_LABELS: [keyof Metrics, string][] = [
     ['rfTransmissions', 'Radio transmissions (all)'],
-    ['originTransmissions', 'New packets sent by their origin'],
+    ['originTransmissions', 'Transmissions by the packet’s origin (incl. retries)'],
     ['relayTransmissions', 'Relay transmissions'],
-    ['controlTransmissions', 'Control transmissions (PATH, ACK)'],
+    ['controlTransmissions', 'Control transmissions (PATH, ACK, advert)'],
+    ['retries', 'Retries of the same packet ID'],
     ['uniqueDeliveries', 'Unique app deliveries'],
     ['duplicatesHeard', 'Duplicates heard and dropped'],
     ['cancelledRelays', 'Relays cancelled'],
-    ['retries', 'Retries of the same packet'],
-    ['confirmations', 'ACKs matched'],
-    ['unconfirmed', 'Sends with no confirmation'],
+    ['confirmations', 'ACKs matched at the sender'],
+    ['unconfirmed', 'Sends ending with no confirmation'],
   ];
   const ACTION_STATUS: Partial<Record<SimEvent['action'], string>> = {
     transmit: 'transmits',
@@ -176,166 +345,313 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     'learn-path': 'learned path',
     ack: 'ACK matched',
     'no-confirmation': 'no ACK',
+    retry: 'retry',
+    fallback: 'flood fallback',
+    'implicit-ack': 'implicit ACK',
+    discover: 'new contact',
+    'no-contact': 'no contact',
+    'user-set-links': 'moved',
   };
 
   for (const root of document.querySelectorAll<HTMLElement>('[data-playground]')) {
     const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
     const $$ = <T extends Element = HTMLElement>(s: string) => [...root.querySelectorAll<T>(s)];
-    const claimBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}reference/claims/#`;
-    const bc = $<HTMLInputElement>('[data-bc]');
-    const bd = $<HTMLInputElement>('[data-bd]');
-    const seed = $<HTMLSelectElement>('[data-seed]');
-    const roleSel = { B: $<HTMLSelectElement>('[data-role="B"]'), C: $<HTMLSelectElement>('[data-role="C"]') };
-    const send = $<HTMLButtonElement>('[data-send]');
-    const resetPath = $<HTMLButtonElement>('[data-resetpath]');
+    const claimBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}reference/`;
+    const presetSel = $<HTMLSelectElement>('[data-preset]');
+    const traffic = $<HTMLSelectElement>('[data-traffic]');
+    const strangers = $<HTMLInputElement>('[data-strangers]');
+    const hop = $<HTMLSelectElement>('[data-hop]');
+    const nextHop = $<HTMLSelectElement>('[data-nexthop]');
+    const pathSel = $<HTMLSelectElement>('[data-path]');
+    const seedIn = $<HTMLInputElement>('[data-seed]');
+    const moveBtn = $<HTMLButtonElement>('[data-move]');
     const stepBtn = $<HTMLButtonElement>('[data-step]');
     const runBtn = $<HTMLButtonElement>('[data-run]');
-    const hint = $('[data-hint]');
     let protocol: 'meshtastic' | 'meshcore' = 'meshtastic';
+    let seed = 3;
+    let p: Preset = preset('diamond');
     let ctl: Controller;
 
-    const prefixes: Record<string, string> = { A: 'a1', B: 'b2', C: 'c3', D: 'd4' };
-    const fmtPath = (p: string[] | null | undefined) => (p ? `[${p.map((n) => prefixes[n]).join(', ')}]` : 'unknown');
+    const group = (kind: 'links' | 'roles') => $$(`[data-for-preset="${p.id}"]`)[kind === 'links' ? 0 : 1];
+    const linkSel = (pair: string) => group('links').querySelector<HTMLSelectElement>(`[data-link="${pair}"]`)!;
+    const roleSel = (n: string) => group('roles').querySelector<HTMLSelectElement>(`[data-role="${n}"]`)!;
+    const fmtPath = (path: string[] | null | undefined) => (path ? `[${path.map((n) => PREFIXES[n]).join(', ')}]` : 'unknown');
+    const option = (sel: HTMLSelectElement, items: [string, string][]) =>
+      sel.replaceChildren(...items.map(([v, t]) => Object.assign(document.createElement('option'), { value: v, textContent: t })));
 
-    function syncRoleOptions() {
-      for (const sel of Object.values(roleSel)) {
-        for (const opt of sel.options) opt.hidden = opt.disabled = opt.dataset.for !== protocol;
-        if (sel.selectedOptions[0]?.dataset.for !== protocol) sel.value = protocol === 'meshtastic' ? 'CLIENT' : 'repeater';
+    function setLinks(links: Link[]) {
+      const has = (a: string, b: string) => links.some((l) => l.from === a && l.to === b);
+      for (const [a, b] of p.pairs) linkSel(`${a}-${b}`).value = has(a, b) && has(b, a) ? 'both' : has(a, b) ? 'ab' : has(b, a) ? 'ba' : 'none';
+    }
+    function readLinks(): Link[] {
+      return p.pairs.flatMap(([a, b]) => {
+        const v = linkSel(`${a}-${b}`).value;
+        return [...(v === 'both' || v === 'ab' ? [{ from: a, to: b }] : []), ...(v === 'both' || v === 'ba' ? [{ from: b, to: a }] : [])];
+      });
+    }
+
+    /** Each preset's documented starting state for the current protocol and traffic. */
+    function applyDefaults() {
+      const dm = protocol === 'meshtastic' && traffic.value === 'dm';
+      let on = p.on.map(([a, b]) => `${a}-${b}`);
+      if (p.id === 'diamond' && protocol === 'meshcore') on = on.filter((e) => e !== 'B-D');
+      if (p.id === 'diamond' && dm) on = on.filter((e) => e !== 'A-B' && e !== 'B-C');
+      setLinks(bothWays(p.pairs.filter(([a, b]) => on.includes(`${a}-${b}`))));
+      for (const n of p.relays) roleSel(n).value = protocol === 'meshtastic' ? 'CLIENT' : 'repeater';
+      hop.value = String(dm && p.id === 'diamond' ? 3 : p.hopLimit);
+      const aNeighbours = p.pairs.filter((pair) => pair.includes('A')).map(([a, b]) => (a === 'A' ? b : a));
+      option(nextHop, [['', 'none (flood)'], ...aNeighbours.map((n): [string, string] => [n, n])]);
+      nextHop.value = p.id === 'diamond' ? 'B' : '';
+      option(pathSel, p.mcPathChoices.map((c, i): [string, string] => [String(i), fmtPath(c)]));
+      pathSel.value = String(p.mcPathChoices.findIndex((c) => JSON.stringify(c) === JSON.stringify(p.mcPath)));
+    }
+
+    function config(): ScenarioConfig {
+      const links = readLinks();
+      const roles = Object.fromEntries(p.relays.map((n) => [n, roleSel(n).value as never]));
+      if (protocol === 'meshtastic') {
+        const cfg = presetScenario(p.id, 'meshtastic', { links, seed, roles, hopLimit: Number(hop.value), mtTraffic: traffic.value as 'broadcast' | 'dm' });
+        if (cfg.protocol === 'meshtastic' && cfg.traffic.kind === 'dm') {
+          // Relays next to D prefer D itself; other relays have no saved preference.
+          const nextHops: Record<string, Record<string, string | null>> = { A: { D: nextHop.value || null } };
+          for (const x of p.relays) if (p.pairs.some((pair) => pair.includes(x) && pair.includes('D'))) nextHops[x] = { D: 'D' };
+          cfg.nextHops = nextHops;
+        }
+        return cfg;
       }
+      const cfg = presetScenario(p.id, 'meshcore', { links, seed, roles, mcPath: p.mcPathChoices[Number(pathSel.value)] });
+      if (cfg.protocol === 'meshcore' && strangers.checked) return { ...cfg, outPaths: {}, contacts: Object.fromEntries(Object.keys(p.pos).map((n) => [n, []])) };
+      return cfg;
+    }
+
+    function syncVisibility() {
+      $('[data-preset-summary]').textContent = p.summary;
+      for (const g of $$('[data-for-preset]')) g.hidden = g.dataset.forPreset !== p.id;
+      for (const g of $$<SVGSVGElement>('[data-graph]')) g.toggleAttribute('hidden', g.dataset.graph !== p.id);
+      for (const el of $$('[data-only]')) el.hidden = el.dataset.only !== protocol;
+      $('[data-dm-only]').hidden = protocol !== 'meshtastic' || traffic.value !== 'dm';
+      for (const sel of $$<HTMLSelectElement>('[data-role]')) {
+        for (const opt of sel.options) opt.hidden = opt.disabled = opt.dataset.for !== protocol;
+      }
+      moveBtn.hidden = !p.move;
+      moveBtn.textContent = p.move ? `Move ${p.move.node}` : '';
+      $('[data-send]').textContent = protocol === 'meshtastic' && traffic.value === 'broadcast' ? 'Send channel broadcast from A' : 'Send message A → D';
+      $('[data-seed-note]').textContent = `Tie order for seed ${seed}: ${relayOrder(seed, Object.keys(p.pos)).join(', ')}. A teaching choice, not radio timing.`;
     }
 
     function rebuild() {
-      const opts = { bcAudible: bc.checked, bdWorks: bd.checked, seed: Number(seed.value) };
-      ctl =
-        protocol === 'meshtastic'
-          ? createController(mtDiamond({ ...opts, roles: { B: roleSel.B.value as never, C: roleSel.C.value as never } }))
-          : createController(mcKnownPath({ ...opts, roles: { B: roleSel.B.value as never, C: roleSel.C.value as never } }));
-      send.textContent = protocol === 'meshtastic' ? 'Send channel broadcast from A' : 'Send message A → D';
-      resetPath.hidden = protocol !== 'meshcore';
-      hint.textContent =
-        protocol === 'meshtastic'
-          ? 'A broadcasts on the channel; D is the node we watch. Press Send, then Step through the events.'
-          : 'A already stores the path [b2] to D. Try a send with B–D broken, then reset A’s path and send again.';
+      ctl = createController(config());
+      moveBtn.disabled = false;
+      const hints: Record<string, string> = {
+        meshtastic: traffic.value === 'dm' ? 'A sends a DM with want-ACK. Try the saved next hop, the links into it, and the hop limit.' : 'A broadcasts on the channel; D is the node we watch. Press Send, then Step through the events.',
+        meshcore: strangers.checked ? 'Nobody knows anybody yet. Try Send first, then adverts, then Send again.' : 'Send, then compare with a reset path or a changed link. Each direction’s path is stored separately.',
+      };
+      $('[data-hint]').textContent = hints[protocol];
       render();
     }
 
-    function act(action: Parameters<Controller['dispatch']>[0]) {
+    function act(action: UserAction) {
       ctl.run(); // settle earlier events first so the new action starts from a finished state
       ctl.dispatch(action);
       ctl.step();
       render();
     }
 
+    function cite(claims: string[]) {
+      const span = document.createElement('span');
+      span.className = 'cite';
+      span.append('[');
+      claims.forEach((c, j) => {
+        if (j) span.append(', ');
+        span.append(Object.assign(document.createElement('a'), { href: `${claimBase}${/-S\d+$/.test(c) ? 'sources' : 'claims'}/#${c.toLowerCase()}`, textContent: c }));
+      });
+      span.append(']');
+      return span;
+    }
+
+    let hypothetical = false;
+    const airEl = (k: string) => $<HTMLInputElement & HTMLSelectElement>(`[data-air="${k}"]`);
+    const fmtMs = (n: number) => n.toFixed(3);
+
+    /** Airtime overlay: reads the visible events only; never touches the controller. */
+    function renderAir() {
+      const sf = Number(airEl('sf').value);
+      const bandwidthKHz = Number(airEl('bandwidthKHz').value);
+      const de = requiresLowDataRateOptimize(sf, bandwidthKHz);
+      const rf = {
+        sf,
+        bandwidthKHz,
+        codingRate: Number(airEl('codingRate').value),
+        preambleSymbols: airEl('preambleSymbols').value.trim() === '' ? NaN : Number(airEl('preambleSymbols').value),
+        explicitHeader: airEl('explicitHeader').checked,
+        crc: airEl('crc').checked,
+        lowDataRateOptimize: de,
+      };
+      $('[data-air-de]').textContent = `Low-data-rate optimization: ${de ? 'on' : 'off'}, set automatically (symbol time ${fmtMs(2 ** sf / bandwidthKHz)} ms; on above 16 ms).`;
+      const bytes = Object.fromEntries(
+        FRAME_KINDS.map((k) => {
+          const v = $<HTMLInputElement>(`[data-air-bytes="${k}"]`).value.trim();
+          return [k, v === '' ? null : Number(v)];
+        }),
+      ) as FrameBytes;
+      const o = routingAirtime(ctl.visibleEvents(), { rf, bytes });
+      const settings = `SF${sf}, ${bandwidthKHz} kHz, CR 4/${rf.codingRate + 4}, ${airEl('preambleSymbols').value || '?'}-symbol preamble, ${rf.explicitHeader ? 'explicit' : 'implicit'} header, CRC ${rf.crc ? 'on' : 'off'}, DE ${de ? 'on' : 'off'}`;
+      const sizes = hypothetical ? ' Sizes: hypothetical 32-byte frames, not firmware facts.' : '';
+      $('[data-air-status]').textContent =
+        o.status === 'invalid'
+          ? 'Airtime unavailable: fix the inputs listed below.'
+          : o.status === 'partial'
+            ? `Known subtotal ${fmtMs(o.knownMs!)} ms for ${o.transmissions - o.unknownTransmissions} of ${o.transmissions} transmissions. ${o.unknownTransmissions} have no size, so there is no total.${sizes}`
+            : `Total time on air: ${fmtMs(o.totalMs!)} ms for ${o.transmissions} transmissions (${o.retries} retries) at ${settings}.${sizes}`;
+      $('[data-air-errors]').replaceChildren(...o.errors.map((e) => Object.assign(document.createElement('li'), { textContent: `${e.field}: ${e.message}` })));
+      for (const k of ['sf', 'bandwidthKHz', 'codingRate', 'preambleSymbols']) airEl(k).setAttribute('aria-invalid', String(o.errors.some((e) => e.field === k)));
+      for (const k of FRAME_KINDS) $(`[data-air-bytes="${k}"]`).setAttribute('aria-invalid', String(o.errors.some((e) => e.field === `bytes.${k}`)));
+      const cell = (tag: 'th' | 'td', text: string) => Object.assign(document.createElement(tag), { textContent: text }, tag === 'th' ? { scope: 'row' } : {});
+      const show = (n: number | null) => (n === null ? 'unavailable' : fmtMs(n));
+      $('[data-air-rows]').replaceChildren(
+        ...o.rows.map((r) => {
+          const tr = document.createElement('tr');
+          tr.append(cell('th', FRAME_LABEL[r.kind]), cell('td', String(r.count)), cell('td', r.bytes === null ? 'unknown' : String(r.bytes)), cell('td', show(r.packetMs)), cell('td', show(r.subtotalMs)));
+          return tr;
+        }),
+      );
+      if (!o.rows.length) {
+        const tr = document.createElement('tr');
+        const td = cell('td', 'No transmissions yet.');
+        td.colSpan = 5;
+        tr.append(td);
+        $('[data-air-rows]').append(tr);
+      }
+    }
+
     function render() {
+      renderAir();
       const events = ctl.visibleEvents();
       const current = events.at(-1);
       const snap = ctl.snapshot();
       const lastTx = [...events].reverse().find((e) => e.action === 'transmit');
       const txNow = current && lastTx && current.time === lastTx.time ? lastTx.node : undefined;
-      const cfg = ctl.config;
-      const linked = (a: string, b: string) => cfg.links.some((l) => l.from === a && l.to === b);
+      const moved = [...events].reverse().find((e) => e.action === 'user-set-links');
+      const links = moved ? (ctl.actions.find((a) => a.type === 'set-links') as Extract<UserAction, { type: 'set-links' }>).links : ctl.config.links;
+      const linked = (a: string, b: string) => links.some((l) => l.from === a && l.to === b);
+      const svg = $(`[data-graph="${p.id}"]`);
 
-      for (const g of $$('[data-edge]')) {
+      for (const g of svg.querySelectorAll<SVGGElement>('[data-edge]')) {
         const [a, b] = g.dataset.edge!.split('-');
-        const present = linked(a, b) && linked(b, a);
-        g.classList.toggle('is-absent', !present);
-        g.classList.toggle('is-active', present && !!txNow && (a === txNow || b === txNow));
-        g.querySelector('[data-edge-label]')!.textContent = present ? '' : 'no link';
+        const ab = linked(a, b);
+        const ba = linked(b, a);
+        const line = g.querySelector('line')!;
+        const arrow = `url(#pg-arrow-${p.id})`;
+        ab && !ba ? line.setAttribute('marker-end', arrow) : line.removeAttribute('marker-end');
+        ba && !ab ? line.setAttribute('marker-start', arrow) : line.removeAttribute('marker-start');
+        g.classList.toggle('is-absent', !ab && !ba);
+        g.classList.toggle('is-oneway', ab !== ba);
+        g.classList.toggle('is-active', !!txNow && ((a === txNow && ab) || (b === txNow && ba)));
+        g.querySelector('[data-edge-label]')!.textContent = ab && ba ? '' : ab ? `${a}→${b} only` : ba ? `${b}→${a} only` : 'no link';
       }
-      for (const g of $$('[data-node]')) {
+      for (const g of svg.querySelectorAll<SVGGElement>('[data-node]')) {
         const id = g.dataset.node!;
-        const node = cfg.nodes.find((n) => n.id === id)!;
-        g.querySelector('[data-role-label]')!.textContent =
-          'prefix' in node ? (node.role === 'repeater' ? 'repeater' : 'companion') : node.role;
+        const node = ctl.config.nodes.find((n) => n.id === id)!;
+        g.querySelector('[data-role-label]')!.textContent = 'prefix' in node ? `${node.role} ${node.prefix}` : node.role;
         const mine = events.filter((e) => e.node === id && ACTION_STATUS[e.action]).at(-1);
         g.querySelector('[data-status]')!.textContent = mine && mine.time === current?.time ? ACTION_STATUS[mine.action]! : '';
         g.classList.toggle('is-tx', id === txNow);
         g.classList.toggle('is-current', id === current?.node);
         g.classList.toggle('has-delivered', snap.nodes[id].delivered.length > 0);
       }
-      $('[data-graph-title]').textContent = current
-        ? `Diamond graph. Latest event at tick ${current.time}: ${current.node} ${current.action}.`
-        : 'Diamond graph of nodes A, B, C and D. Nothing sent yet.';
+      svg.querySelector('[data-graph-title]')!.textContent = current
+        ? `${p.label} graph. Latest event at tick ${current.time}: ${current.node} ${current.action}.`
+        : `${p.label} graph of nodes ${Object.keys(p.pos).join(', ')}. Nothing sent yet.`;
 
       const state = $('[data-state]');
+      const line = (text: string) => state.append(Object.assign(document.createElement('li'), { textContent: text }));
       state.replaceChildren();
-      const line = (text: string) => {
-        const li = document.createElement('li');
-        li.textContent = text;
-        state.append(li);
-      };
-      if (protocol === 'meshcore') {
+      const dm = ctl.config.protocol === 'meshcore' || ctl.config.traffic.kind === 'dm';
+      if (ctl.config.protocol === 'meshcore') {
         line(`A’s stored path to D: ${fmtPath(snap.nodes.A.outPaths.D)}`);
         line(`D’s stored path to A: ${fmtPath(snap.nodes.D.outPaths.A)}`);
-        line(`A waiting for an ACK: ${snap.nodes.A.awaiting.length ? snap.nodes.A.awaiting.join(', ') : 'no'}`);
+        if (snap.nodes.A.contacts) line(`Contacts: A knows ${snap.nodes.A.contacts.join(', ') || 'nobody'}; D knows ${snap.nodes.D.contacts!.join(', ') || 'nobody'}`);
       } else {
-        for (const id of ['B', 'C']) {
-          line(`${id} pending relays: ${snap.nodes[id].pendingRelays.length ? snap.nodes[id].pendingRelays.join(', ') : 'none'}`);
-        }
+        if (dm) line(`A’s saved next hop toward D: ${snap.nodes.A.outPaths.D?.[0] ?? 'none'}`);
+        for (const id of p.relays) line(`${id} pending relays: ${snap.nodes[id].pendingRelays.join(', ') || 'none'}`);
       }
-      line(`Delivered to D’s app: ${snap.nodes.D.delivered.length ? snap.nodes.D.delivered.join(', ') : 'nothing yet'}`);
+      if (dm) line(`A waiting for an ACK: ${snap.nodes.A.awaiting.join(', ') || 'no'}`);
+      const hopsAtD = events.flatMap((e, i) => (e.node === 'D' && e.action === 'deliver' ? [`${e.packet!.message} after ${deliveryHops(ctl.trace, i)} relay(s)`] : []));
+      line(`Delivered to D’s app (trace view): ${hopsAtD.join('; ') || 'nothing yet'}`);
+
+      const aEvents = events.filter((e) => e.node === 'A' && ['ack', 'implicit-ack', 'no-confirmation', 'no-contact', 'retry', 'fallback'].includes(e.action));
+      const lastA = aEvents.at(-1);
+      $('[data-sender]').textContent = !dm
+        ? 'A broadcast has no end-to-end ACK. A cannot know who received it.'
+        : lastA
+          ? lastA.reason
+          : events.some((e) => e.node === 'A' && e.action === 'user-send')
+            ? 'A has sent and is waiting. It does not see what happens at other nodes.'
+            : 'Nothing sent yet.';
 
       const m = ctl.metrics();
       $('[data-metrics]').replaceChildren(
-        ...METRIC_LABELS.filter(([k]) => protocol === 'meshcore' || !['controlTransmissions', 'confirmations', 'unconfirmed'].includes(k)).map(([k, label]) => {
+        ...METRIC_LABELS.filter(([k]) => dm || !['controlTransmissions', 'confirmations', 'unconfirmed', 'retries'].includes(k)).map(([k, label]) => {
           const tr = document.createElement('tr');
-          const th = document.createElement('th');
-          th.scope = 'row';
-          th.textContent = label;
-          const td = document.createElement('td');
-          td.textContent = String(m[k]);
-          tr.append(th, td);
+          tr.append(Object.assign(document.createElement('th'), { scope: 'row', textContent: label }), Object.assign(document.createElement('td'), { textContent: String(m[k]) }));
           return tr;
         }),
       );
 
-      const log = $('[data-log]');
-      log.replaceChildren(
+      $('[data-log]').replaceChildren(
         ...events.map((e, i) => {
           const li = document.createElement('li');
           if (i === events.length - 1) li.className = 'is-current';
-          const tick = document.createElement('span');
-          tick.className = 'pg-tick';
-          tick.textContent = `t${e.time}`;
-          const who = document.createElement('strong');
-          who.textContent = e.node;
-          li.append(tick, ' ', who, `: ${e.reason} `);
-          const cite = document.createElement('span');
-          cite.className = 'cite';
-          cite.append('[');
-          e.claims.forEach((c, j) => {
-            if (j) cite.append(', ');
-            const a = document.createElement('a');
-            a.href = claimBase + c.toLowerCase();
-            a.textContent = c;
-            cite.append(a);
-          });
-          cite.append(']');
-          li.append(cite);
+          li.append(Object.assign(document.createElement('span'), { className: 'pg-tick', textContent: `t${e.time}` }), ' ', Object.assign(document.createElement('strong'), { textContent: e.node }), `: ${e.reason} `, cite(e.claims));
           return li;
         }),
       );
-      if (!events.length) {
-        const li = document.createElement('li');
-        li.className = 'pg-empty';
-        li.textContent = 'No events yet. Press Send.';
-        log.append(li);
-      }
+      if (!events.length) $('[data-log]').append(Object.assign(document.createElement('li'), { className: 'pg-empty', textContent: 'No events yet. Press Send.' }));
       $('[data-live]').textContent = current ? `Tick ${current.time}, ${current.node}: ${current.reason}` : '';
       stepBtn.disabled = runBtn.disabled = !ctl.canStep();
     }
 
+    function full() {
+      applyDefaults();
+      syncVisibility();
+      rebuild();
+    }
+
+    presetSel.addEventListener('change', () => {
+      p = preset(presetSel.value);
+      full();
+    });
     for (const r of $$<HTMLInputElement>('input[name="pg-protocol"]')) {
       r.addEventListener('change', () => {
         protocol = r.value as typeof protocol;
-        bd.checked = protocol === 'meshtastic'; // each protocol's starting scenario
-        syncRoleOptions();
-        rebuild();
+        full();
       });
     }
-    for (const el of [bc, bd, seed, roleSel.B, roleSel.C]) el.addEventListener('change', rebuild);
-    send.addEventListener('click', () => act({ type: 'send' }));
-    resetPath.addEventListener('click', () => act({ type: 'reset-path', node: 'A', dest: 'D' }));
+    traffic.addEventListener('change', full);
+    strangers.addEventListener('change', rebuild);
+    for (const el of [...$$('[data-link]'), ...$$('[data-role]'), hop, nextHop, pathSel]) el.addEventListener('change', rebuild);
+    seedIn.addEventListener('change', () => {
+      const v = Number(seedIn.value);
+      const ok = seedIn.value.trim() !== '' && Number.isInteger(v) && v >= 0 && v <= 0xffffffff;
+      seedIn.setAttribute('aria-invalid', String(!ok));
+      if (!ok) {
+        $('[data-seed-note]').textContent = `Seed must be a whole number from 0 to 4294967295; still using ${seed}.`;
+        return;
+      }
+      seed = v;
+      syncVisibility();
+      rebuild();
+    });
+    $('[data-send]').addEventListener('click', () => act({ type: 'send' }));
+    $('[data-resetpath]').addEventListener('click', () => act({ type: 'reset-path', node: 'A', dest: 'D' }));
+    for (const b of $$<HTMLButtonElement>('[data-advert]')) {
+      b.addEventListener('click', () => act({ type: 'advert', node: $<HTMLSelectElement>('[data-advert-node]').value, scope: b.dataset.advert as 'zero-hop' | 'flood' }));
+    }
+    moveBtn.addEventListener('click', () => {
+      if (!p.move) return;
+      act({ type: 'set-links', node: p.move.node, label: p.move.label, links: bothWays(p.move.on) });
+      moveBtn.disabled = true;
+    });
     stepBtn.addEventListener('click', () => {
       ctl.step();
       render();
@@ -346,11 +662,29 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     });
     $('[data-reset]').addEventListener('click', () => {
       ctl.reset();
+      moveBtn.disabled = false;
       render();
     });
 
-    syncRoleOptions();
-    rebuild();
+    for (const el of $$('[data-air]')) el.addEventListener('input', renderAir);
+    for (const el of $$('[data-air-bytes]')) {
+      el.addEventListener('input', () => {
+        hypothetical = false;
+        renderAir();
+      });
+    }
+    $('[data-air-hypo]').addEventListener('click', () => {
+      for (const k of FRAME_KINDS) $<HTMLInputElement>(`[data-air-bytes="${k}"]`).value = String(HYPOTHETICAL_BYTES[k]);
+      hypothetical = true;
+      renderAir();
+    });
+    $('[data-air-clear]').addEventListener('click', () => {
+      for (const el of $$<HTMLInputElement>('[data-air-bytes]')) el.value = '';
+      hypothetical = false;
+      renderAir();
+    });
+
+    full();
     $('[data-ui]').hidden = false;
   }
 </script>
@@ -364,8 +698,9 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     color: var(--sl-color-gray-3);
     max-width: 66ch;
   }
-  .pg-ui[hidden] {
-    display: none;
+  .pg-ui[hidden],
+  [hidden] {
+    display: none !important;
   }
   .pg-controls {
     display: flex;
@@ -380,17 +715,24 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     display: flex;
     flex-direction: column;
     gap: 0.5rem;
-    min-width: 12rem;
+    min-width: min(100%, 14rem);
+    flex: 1 1 14rem;
   }
   legend {
     padding-inline: 0.25rem;
     font-weight: 600;
   }
-  fieldset label {
+  fieldset label,
+  .pg-advert label {
     display: flex;
     align-items: center;
     gap: 0.5rem;
     min-height: 2.75rem;
+  }
+  .pg-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
   }
   input[type='radio'],
   input[type='checkbox'] {
@@ -398,7 +740,8 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     height: 1.25rem;
     accent-color: var(--sl-color-accent);
   }
-  .pg-select select {
+  .pg-select select,
+  .pg-select input {
     min-height: 2.75rem;
     font: inherit;
     color: var(--sl-color-white);
@@ -406,11 +749,22 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     border: 1px solid var(--sl-color-gray-4);
     border-radius: 0.25rem;
     padding-inline: 0.5rem;
+    max-width: 100%;
   }
-  .pg-actions {
+  .pg-select input {
+    width: 9rem;
+  }
+  .pg-select input[aria-invalid='true'] {
+    border-color: var(--sl-color-red, #c00);
+  }
+  .pg-actions,
+  .pg-advert {
     display: flex;
     flex-wrap: wrap;
     gap: 0.75rem;
+    align-items: center;
+  }
+  .pg-actions {
     margin-block: 1.25rem 0.25rem;
   }
   .pg-main {
@@ -429,9 +783,15 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     height: auto;
     font-family: var(--__sl-font);
   }
+  .pg-arrow {
+    fill: var(--sl-color-gray-2);
+  }
   .edge line {
     stroke: var(--sl-color-gray-3);
     stroke-width: 2;
+  }
+  .edge.is-oneway line {
+    stroke: var(--sl-color-gray-2);
   }
   .edge.is-absent line {
     stroke: var(--sl-color-gray-5);
@@ -524,12 +884,54 @@ const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
     font-variant-numeric: tabular-nums;
     color: var(--sl-color-gray-3);
   }
-  .cite {
+  .pg-log :global(.cite) {
     font-size: var(--sl-text-xs);
     color: var(--sl-color-gray-3);
   }
-  .cite a {
+  .pg-log :global(.cite a) {
     color: inherit;
+  }
+  .pg-air {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding-top: 0.75rem;
+  }
+  .pg-air h3 {
+    font-size: var(--sl-text-lg);
+  }
+  .pg-air-status {
+    font-weight: 600;
+    max-width: 72ch;
+  }
+  .pg-scroll {
+    overflow-x: auto;
+    margin-block: 0.5rem;
+  }
+  .pg-scroll:focus-visible {
+    outline: 2px solid var(--sl-color-accent);
+  }
+  .pg-airtable {
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+    min-width: 30rem;
+  }
+  .pg-airtable caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.25rem;
+  }
+  /* Rows are rebuilt in JS without Astro's scope attribute, so reach them with :global. */
+  .pg-air :global(th),
+  .pg-air :global(td),
+  .pg-walk .pg-airtable th,
+  .pg-walk .pg-airtable td {
+    text-align: start;
+    padding: 0.3rem 0.6rem 0.3rem 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    font-variant-numeric: tabular-nums;
+  }
+  .pg-air :global(.pg-air-errors li) {
+    color: var(--sl-color-red-high, var(--sl-color-white));
   }
   .pg-walk {
     margin-top: 1.5rem;

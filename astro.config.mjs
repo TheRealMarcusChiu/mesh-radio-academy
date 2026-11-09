@@ -44,10 +44,15 @@ export default defineConfig({
             { slug: 'curriculum', label: 'Full course outline' },
           ],
         },
-        // Only labs present in this build are listed; the index shows the rest as integration pending.
         {
           label: 'Labs',
-          items: [{ slug: 'labs', label: 'All labs' }, 'labs/rf-sandbox', 'labs/routing-playground', 'labs/field-planner'],
+          items: [
+            { slug: 'labs', label: 'All labs' },
+            'labs/rf-sandbox',
+            'labs/routing-playground',
+            'labs/packet-inspector',
+            'labs/field-planner',
+          ],
         },
         {
           label: 'Reference',
