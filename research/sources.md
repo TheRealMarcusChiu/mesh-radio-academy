@@ -1,0 +1,138 @@
+Every claim in the course points to one or more sources listed here. Each row records what was checked and how far that check goes.
+
+- **Code evidence** links use full, immutable commit hashes.
+- **Documentation and websites** can change. Their rows give the date they were checked; the page may have changed since.
+- **Checked** dates are UTC. Rows marked 2026-11-09 were read during the course's research pass (three research reports, then a coordinator spot-check). Rows marked *slice check* were re-fetched while building the first lessons.
+- Nothing here means a radio, app or board was physically tested. See the baselines file (`research/baselines.md`) for test status.
+
+ID prefixes: `MT` Meshtastic, `MC` MeshCore, `RF` radio physics and calculation, `HW` hardware and safety, `REG` US regulation, `NTX` North Texas community, `LW` LoRa and LoRaWAN layering.
+
+## Meshtastic
+
+Firmware evidence below refers to tag `v2.7.26.54e0d8d`, commit `54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb`, unless the row says otherwise.
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="mt-s01"></a>MT-S01 | [Firmware release v2.7.26.54e0d8d](https://github.com/meshtastic/firmware/releases/tag/v2.7.26.54e0d8d); [releases API](https://api.github.com/repos/meshtastic/firmware/releases/latest) | Release title "Beta", `prerelease: false`, published 2026-06-24. Tag checked out; commit confirmed. Newer 2.8.x releases are Alpha. | 2026-11-09 |
+| <a id="mt-s02"></a>MT-S02 | [2.7 Mesh broadcast algorithm](https://meshtastic.org/docs/2.7/overview/mesh-algo/) | Archived docs for this version; prose needs the code qualifications in the claims. The unversioned page now describes 2.8. | 2026-11-09 |
+| <a id="mt-s03"></a>MT-S03 | [2.7 encryption](https://meshtastic.org/docs/2.7/overview/encryption/) compared with [current 2.8 encryption](https://meshtastic.org/docs/overview/encryption/) | Version boundaries for CCM, signatures, ACK proof. Archived page oversimplifies (see corrections). | 2026-11-09 |
+| <a id="mt-s04"></a>MT-S04 | [Protobufs at firmware gitlink](https://github.com/meshtastic/protobufs/tree/6b1ded439633cd03d4af85b44231b91d1d106278); [firmware tree](https://github.com/meshtastic/firmware/tree/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb) | Submodule commit reported by the research checkout (`git ls-tree`); not independently re-fetched. | 2026-11-09 |
+| <a id="mt-s05"></a>MT-S05 | [Python CLI 2.7.11](https://github.com/meshtastic/python/releases/tag/2.7.11); [pinned `__main__.py`](https://github.com/meshtastic/python/blob/19d066970e652a5a72a18718149b638e3473a6eb/meshtastic/__main__.py#L127-L187); [CLI docs](https://meshtastic.org/docs/software/python/cli/) | Installed in an isolated environment; `--version` and `--help` run; installed source matched the commit. No radio connected. | 2026-11-09 |
+| <a id="mt-s06"></a>MT-S06 | [Android v2.8.3](https://github.com/meshtastic/Meshtastic-Android/releases/tag/v2.8.3) ([commit](https://github.com/meshtastic/Meshtastic-Android/tree/105d541a2e068cc8abfb4f2d31bc4e5636d922ce)) | Version identified only; pairing with the baseline firmware not tested. | 2026-11-09 |
+| <a id="mt-s07"></a>MT-S07 | [Apple v2.7.27](https://github.com/meshtastic/Meshtastic-Apple/releases/tag/v2.7.27) ([commit](https://github.com/meshtastic/Meshtastic-Apple/tree/75fa91664872f8a5e73dd9d66563acd614796c43)) | Version identified only; pairing not tested. | 2026-11-09 |
+| <a id="mt-s08"></a>MT-S08 | [Official web flasher](https://flasher.meshtastic.org/); [2.7 ESP32 web-flasher guide](https://meshtastic.org/docs/2.7/getting-started/flashing-firmware/esp32/web-flasher/); [flasher repo snapshot](https://github.com/meshtastic/web-flasher/tree/6b3b34722106f282eb66162164dd40f1729e7826) | Site responds; guide requires Chrome or Edge. No numbered release, and the deployed build's commit is unknown. | 2026-11-09 |
+| <a id="mt-s09"></a>MT-S09 | [FloodingRouter.cpp L28–175](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/FloodingRouter.cpp#L28-L175) | Duplicate cancellation on LoRa, role exceptions, `isRebroadcaster`. Cancellation branch re-read in slice check. | 2026-11-09 (slice check) |
+| <a id="mt-s10"></a>MT-S10 | [NextHopRouter.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/NextHopRouter.cpp) | Next-hop learning, eligibility, retransmission and fallback; L265–315 spot-checked by coordinator. | 2026-11-09 |
+| <a id="mt-s11"></a>MT-S11 | [PacketHistory.cpp L41–125](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/PacketHistory.cpp#L41-L125) | Sender + ID duplicate identity; fallback recognition. | 2026-11-09 |
+| <a id="mt-s12"></a>MT-S12 | [RadioInterface.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/RadioInterface.cpp) | L587–636 SNR-weighted relay delay; L845–871 automatic frequency slot. | 2026-11-09 |
+| <a id="mt-s13"></a>MT-S13 | [2.7 Device configuration](https://meshtastic.org/docs/2.7/configuration/radio/device/) | Roles and rebroadcast modes; REPEATER deprecated since 2.7.11. | 2026-11-09 |
+| <a id="mt-s14"></a>MT-S14 | [RoutingModule.cpp L11–42](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/modules/RoutingModule.cpp#L11-L42) | Opaque PKI and rebroadcast-policy checks. | 2026-11-09 |
+| <a id="mt-s15"></a>MT-S15 | [Router.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/Router.cpp) | Hop exception L82–130; decode L424–515; encode L637–706; filters L726–803. | 2026-11-09 |
+| <a id="mt-s16"></a>MT-S16 | [NodeDB.cpp L1675–1689](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/NodeDB.cpp#L1675-L1689) | Derived hops-away and unknown-state guard. | 2026-11-09 |
+| <a id="mt-s17"></a>MT-S17 | [ReliableRouter.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/ReliableRouter.cpp) | Implicit and explicit ACKs, MQTT guards. | 2026-11-09 |
+| <a id="mt-s18"></a>MT-S18 | [NextHopRouter.h L93](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/NextHopRouter.h#L93) | `NUM_RELIABLE_RETX=3`. | 2026-11-09 |
+| <a id="mt-s19"></a>MT-S19 | [2.7 Channel configuration](https://meshtastic.org/docs/2.7/configuration/radio/channels/) | Shared modem, logical name/key, primary-derived slot. | 2026-11-09 |
+| <a id="mt-s20"></a>MT-S20 | [Channels.cpp L35–51](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/Channels.cpp#L35-L51) | Channel hash; key expansion. | 2026-11-09 |
+| <a id="mt-s21"></a>MT-S21 | [CryptoEngine.cpp L88–178](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mesh/CryptoEngine.cpp#L88-L178) | Key derivation, CCM tag, nonce. | 2026-11-09 |
+| <a id="mt-s22"></a>MT-S22 | [AdminModule.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/modules/AdminModule.cpp) | Authorization L72–138; session passkey L1430–1458. | 2026-11-09 |
+| <a id="mt-s23"></a>MT-S23 | [2.7 Security configuration](https://meshtastic.org/docs/2.7/configuration/radio/security/) | Admin keys, managed mode, backup sensitivity. | 2026-11-09 |
+| <a id="mt-s24"></a>MT-S24 | [MQTT configuration](https://meshtastic.org/docs/configuration/module/mqtt/) | Current (2.8) prose cross-checked against pinned code; defaults not inferred from it. | 2026-11-09 |
+| <a id="mt-s25"></a>MT-S25 | [GHSA-377p-prwp-4hwf](https://github.com/meshtastic/firmware/security/advisories/GHSA-377p-prwp-4hwf) | Forged legacy DMs; fixed 2.7.15. | 2026-11-09 |
+| <a id="mt-s26"></a>MT-S26 | [GHSA-95pq-gj5v-4fg2](https://github.com/meshtastic/firmware/security/advisories/GHSA-95pq-gj5v-4fg2) | Stored public-key overwrite; fixed 2.6.3. | 2026-11-09 |
+| <a id="mt-s27"></a>MT-S27 | [GHSA-gq7v-jr8c-mfr7](https://github.com/meshtastic/firmware/security/advisories/GHSA-gq7v-jr8c-mfr7) | Repeated or weak keypairs; remediation caveats. | 2026-11-09 |
+| <a id="mt-s28"></a>MT-S28 | [GHSA-7ph5-2mjv-69h8](https://github.com/meshtastic/firmware/security/advisories/GHSA-7ph5-2mjv-69h8) | Malformed name breaks clients; patched version listed as N/A. | 2026-11-09 |
+| <a id="mt-s29"></a>MT-S29 | [Firmware security advisories](https://github.com/meshtastic/firmware/security/advisories) | Listing is date-sensitive; not a complete audit. | 2026-11-09 |
+| <a id="mt-s30"></a>MT-S30 | [MQTT.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/src/mqtt/MQTT.cpp) | Downlink L65–153; uplink, loop guard, encryption L766–830. | 2026-11-09 |
+| <a id="mt-s31"></a>MT-S31 | [test_crypto/test_main.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/test/test_crypto/test_main.cpp) | Test vectors inspected, not executed. | 2026-11-09 |
+| <a id="mt-s32"></a>MT-S32 | [test_radio/test_main.cpp](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/test/test_radio/test_main.cpp) | Bandwidth/preset tests; not routing tests. Inspected, not executed. | 2026-11-09 |
+| <a id="mt-s33"></a>MT-S33 | [2.7 Radio settings](https://meshtastic.org/docs/2.7/overview/radio-settings/) | Spreading factor, bandwidth and coding-rate trade-offs; preset table with the doc's stated 22 dBm / 0 dBi link-budget assumption. Archived, "no longer actively maintained". | 2026-11-09 slice check |
+
+## MeshCore
+
+Firmware evidence below refers to role tags `companion-v1.18.0`, `repeater-v1.18.0` and `room-server-v1.18.0`, all at commit `81dbae592ffad40b4212bc0b37e82b38da08f4bc`.
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="mc-s01"></a>MC-S01 | [meshcore.io](https://meshcore.io/) | Links to the core repository, docs, flasher and app distribution. Marketing claims not used as evidence. | 2026-11-09 |
+| <a id="mc-s02"></a>MC-S02 | [The split (meshcore.io blog, 2026-04-23)](https://blog.meshcore.io/2026/04/23/the-split) | First-party account by its authors; not independent adjudication. | 2026-11-09 |
+| <a id="mc-s03"></a>MC-S03 | [meshcore.co.uk](https://meshcore.co.uk/) | Distributes MeshOS and links Liam Cottle's app; links the same core repository for developer docs. | 2026-11-09 |
+| <a id="mc-s04"></a>MC-S04 | [docs.meshcore.io](https://docs.meshcore.io/); [flasher.meshcore.io](https://flasher.meshcore.io/); [config.meshcore.io](https://config.meshcore.io/) | Pages respond; app shells inspected without hardware. Flasher warns that erase destroys identity. Deployed tool versions unknown. | 2026-11-09 |
+| <a id="mc-s05"></a>MC-S05 | Role releases [companion](https://github.com/meshcore-dev/MeshCore/releases/tag/companion-v1.18.0), [repeater](https://github.com/meshcore-dev/MeshCore/releases/tag/repeater-v1.18.0), [room server](https://github.com/meshcore-dev/MeshCore/releases/tag/room-server-v1.18.0) | All three tags resolve to the baseline commit; assets listed. | 2026-11-09 |
+| <a id="mc-s06"></a>MC-S06 | [Release 1.18.0 article](https://blog.meshcore.io/2026/10/15/release-1-18-0) | Documents app v1.50.0 features with this firmware. | 2026-11-09 |
+| <a id="mc-s07"></a>MC-S07 | [Liam Cottle app v1.50.0 files](https://files.liamcottle.net/MeshCore/v1.50.0/) | Artifact names listed; not installed or hash-verified. `b7528a7` in names is not a verified source commit. | 2026-11-09 |
+| <a id="mc-s08"></a>MC-S08 | [packet_format.md L14–66](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/docs/packet_format.md#L14-L66) | Header, transport codes and path encoding. Its v1.12 reference is stale (see corrections). | 2026-11-09 |
+| <a id="mc-s09"></a>MC-S09 | [Packet.h L7–87](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Packet.h#L7-L87); [Packet.cpp L13–84](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Packet.cpp#L13-L84) | Constants, path count encoding, packet hash. | 2026-11-09 |
+| <a id="mc-s10"></a>MC-S10 | [Mesh.cpp L78–195](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Mesh.cpp#L78-L195); [flood forwarding L334–355](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Mesh.cpp#L334-L355); [zero-hop send L717–725](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Mesh.cpp#L717-L725) | Direct next-relay match and removal; first packet wins; floods append relay prefix; reciprocal path return. | 2026-11-09 |
+| <a id="mc-s11"></a>MC-S11 | [BaseChatMesh.cpp](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/helpers/BaseChatMesh.cpp#L108-L200) (contacts L108–200, DM/path L222–389, send/reset L480–537, `resetPathTo` L834–836) | Stored out_path; ACK bundled with returned path; unknown route floods; reset changes state only. | 2026-11-09 |
+| <a id="mc-s12"></a>MC-S12 | [Companion MyMesh.cpp](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/examples/companion_radio/MyMesh.cpp#L487-L499) (repeat flag L487–499, send L1132–1171, path reset L1317–1326) | Explicit app-driven send and path reset; `onSendTimeout()` is empty. | 2026-11-09 |
+| <a id="mc-s13"></a>MC-S13 | [Companion NodePrefs.h L139–151, L218–220](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/examples/companion_radio/NodePrefs.h#L139-L151) | Companion repeat off by default but configurable. Coordinator confirmed `allowPacketForward` returns the repeat preference. | 2026-11-09 |
+| <a id="mc-s14"></a>MC-S14 | [Repeater MyMesh.cpp L434–459](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/examples/simple_repeater/MyMesh.cpp#L434-L459) | Forwarding subject to disable flag, scope, flood limits, loop policy. | 2026-11-09 |
+| <a id="mc-s15"></a>MC-S15 | [companion_protocol.md](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/docs/companion_protocol.md#L1-L198) | Phone/USB app protocol; not the over-air format. | 2026-11-09 |
+| <a id="mc-s16"></a>MC-S16 | [cli_commands.md](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/docs/cli_commands.md#L132-L214) (L132–214; path modes L478–494) | Read-only commands; multibyte paths need ≥1.14 forwarders. | 2026-11-09 |
+| <a id="mc-s17"></a>MC-S17 | [payloads.md](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/docs/payloads.md#L20-L89) (L20–89; text/login/group L197–277) | Payload layouts. ACK described as "CRC"; code uses truncated SHA-256 (see corrections). | 2026-11-09 |
+| <a id="mc-s18"></a>MC-S18 | [Utils.cpp L53–179](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Utils.cpp#L53-L179); [Identity.cpp L151–156](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/Identity.cpp#L151-L156) | AES-128 block encryption, truncated HMAC-SHA256; not a crypto audit. | 2026-11-09 |
+| <a id="mc-s19"></a>MC-S19 | [Room server MyMesh.cpp](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/examples/simple_room_server/MyMesh.cpp#L41-L65); [MyMesh.h L68–110](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/examples/simple_room_server/MyMesh.h#L68-L110) | Server stores readable posts; cyclic queue default 32; login branches. | 2026-11-09 |
+| <a id="mc-s20"></a>MC-S20 | [SECURITY.md](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/SECURITY.md); advisory API | Fixes land in latest release; empty advisory list is not proof of safety. | 2026-11-09 |
+| <a id="mc-s21"></a>MC-S21 | [test_routing_policy.cpp](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/test/test_routing_policy/test_routing_policy.cpp#L14-L104); [test_simple_mesh_tables.cpp](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/test/test_mesh_tables/test_simple_mesh_tables.cpp) | Inspected, not executed. No upstream B–D failover test. | 2026-11-09 |
+| <a id="mc-s22"></a>MC-S22 | [FAQ stale path L479–483](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/docs/faq.md#L479-L483) | Describes configurable client retries; app source not verified. | 2026-11-09 |
+| <a id="mc-s23"></a>MC-S23 | [CommonCLI.cpp L283–286](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/helpers/CommonCLI.cpp#L283-L286); [StatsFormatHelper.h](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/src/helpers/StatsFormatHelper.h#L7-L53) | Console output shapes; serial at 115200 baud. | 2026-11-09 |
+
+## Radio physics and calculation
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="rf-s01"></a>RF-S01 | Semtech SX1276/77/78/79 datasheet Rev. 4 (March 2015), §4.1.1.7 p. 31; [manufacturer-authored PDF, third-party host](https://cdn-shop.adafruit.com/product-files/3179/sx1276_77_78_79.pdf) | Time-on-air formula and low-data-rate note inspected during research. The slice check could not extract text from the PDF in this environment, so SNR-per-SF figures are **not** quoted. | 2026-11-09 |
+| <a id="rf-s02"></a>RF-S02 | [LoRaMac-node v4.7.0 `sx1276.c`](https://github.com/Lora-net/LoRaMac-node/blob/672b37deec7589b2e7346d3acb6a0e8ba79fa9fe/src/radio/sx1276/sx1276.c) | Time-on-air functions compiled and run in a harness; result rounds up to whole ms. | 2026-11-09 |
+| <a id="rf-s03"></a>RF-S03 | [ITU-R P.525-5 (11/2024)](https://www.itu.int/rec/R-REC-P.525-5-202411-I/en), Annex §2.3 eqs 5–6 | Free-space loss reference; not a coverage model. | 2026-11-09 |
+| <a id="rf-s04"></a>RF-S04 | [Seeed T1000-E battery workbook](https://files.seeedstudio.com/wiki/SenseCAP/Meshtastic/T1000-E%20for%20Meshtastic%20Consumption%20Test%20and%20Battery%20Life%20Calculation.xlsx) | Calculation structure only; not measurements made by this course. | 2026-11-09 |
+| <a id="rf-s05"></a>RF-S05 | [ITU-R P.526-16 (11/2025) "Propagation by diffraction"](https://www.itu.int/rec/R-REC-P.526/en) | Current version and title confirmed. The PDF text was not extracted, so the course states the Fresnel-zone idea and geometry without quoting a section number. | 2026-11-09 slice check |
+| <a id="rf-s06"></a>RF-S06 | [ITU-R V.574-5 (08/2015) "Use of the decibel and the neper in telecommunications"](https://www.itu.int/rec/R-REC-V.574/en) | Current version and title confirmed; used for the standard decibel definitions. | 2026-11-09 slice check |
+
+## LoRa and LoRaWAN layering
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="lw-s01"></a>LW-S01 | [LoRa Alliance: About LoRaWAN](https://lora-alliance.org/about-lorawan/), "What is LoRaWAN?", FAQ "difference between LoRa and LoRaWAN", "LoRaWAN Architecture" | LoRa is the physical layer; LoRaWAN is a MAC/network specification using a star-of-stars topology with gateways and network servers. | 2026-11-09 slice check |
+
+## Hardware and safety
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="hw-s01"></a>HW-S01 | [Heltec WiFi LoRa 32 V3.2 PDF](https://resource.heltec.cn/download/WiFi_LoRa_32_V3/HTIT-WB32LA_V3.2.pdf) §§1.1, 1.3, 3.1–3.6 | Cover says V3.2; revision history and footer disagree (kept, not resolved). | 2026-11-09 |
+| <a id="hw-s02"></a>HW-S02 | Heltec [quick start](https://docs.heltec.org/en/node/esp32/esp32_general_docs/quick_start.html); [index](https://docs.heltec.org/en/node/esp32/wifi_lora_32/index.html) | Boot-button recovery. Index says it is no longer updated and mixes V3 and V4. | 2026-11-09 |
+| <a id="hw-s03"></a>HW-S03 | RAK [RAK4631 datasheet](https://docs.rakwireless.com/product-categories/wisblock/rak4631/datasheet/); [overview](https://docs.rakwireless.com/product-categories/wisblock/rak4631/overview/) | nRF52840 + SX1262, H/L band options, antenna warning. PCB revision not given. | 2026-11-09 |
+| <a id="hw-s04"></a>HW-S04 | RAK [RAK19007 datasheet](https://docs.rakwireless.com/product-categories/wisblock/rak19007/datasheet/) | USB-C, battery polarity, voltage ceilings. | 2026-11-09 |
+| <a id="hw-s05"></a>HW-S05 | RAK [RAK4631 quick start](https://docs.rakwireless.com/product-categories/wisblock/rak4631/quickstart/) (Antenna; Meshtastic; Bootloader) | Double-reset UF2 drive; RAK4631-R conversion; antenna warning. | 2026-11-09 |
+| <a id="hw-s06"></a>HW-S06 | Seeed [T1000-E introduction](https://wiki.seeedstudio.com/t1000_e_intro/) | nRF52840 + LR1110, internal antennas, 700 mAh, IP65, charging 0–45 °C. | 2026-11-09 |
+| <a id="hw-s07"></a>HW-S07 | Seeed [Meshtastic T1000-E setup](https://wiki.seeedstudio.com/sensecap_t1000_e/) (Flash Firmware; Troubleshooting) | Exact-image warnings, no NRF-OTA, DFU and erase recovery. Page updated 2026-10-26. | 2026-11-09 |
+| <a id="hw-s08"></a>HW-S08 | Seeed [MeshCore T1000-E setup](https://wiki.seeedstudio.com/sensecap_t1000_e_meshcore/) | Bluetooth companion setup; erase/UF2 procedure. App versions not established. | 2026-11-09 |
+| <a id="hw-s09"></a>HW-S09 | Meshtastic firmware development snapshot [6d41e27](https://github.com/meshtastic/firmware/tree/6d41e279f1f51bd59f687b9d441c1bf47b1594fc) | Development commit, **not** the course baseline. Superseded for course claims by HW-S14. | 2026-11-09 |
+| <a id="hw-s10"></a>HW-S10 | MeshCore target files at baseline commit: [Heltec V3](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/variants/heltec_v3/platformio.ini), [RAK4631](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/variants/rak4631/platformio.ini), [T1000-E](https://github.com/meshcore-dev/MeshCore/blob/81dbae592ffad40b4212bc0b37e82b38da08f4bc/variants/t1000-e/platformio.ini) | Companion BLE/USB, repeater and room-server environments present for all three; Heltec V3 and T1000-E files re-read in slice check, RAK by coordinator. Build targets, not compiled or tested. | 2026-11-09 slice check |
+| <a id="hw-s11"></a>HW-S11 | Meshtastic [current device roles](https://meshtastic.org/docs/configuration/radio/device/); [nRF52 flashing](https://meshtastic.org/docs/getting-started/flashing-firmware/nrf52/) | Current (2.8) docs. For baseline role claims use MT-S13 instead. | 2026-11-09 |
+| <a id="hw-s12"></a>HW-S12 | ARRL [lightning protection](https://www.arrl.org/lightning-protection); [QST June 2002 Part 1](https://www.arrl.org/files/file/Technology/tis/info/pdf/0206056.pdf) pp. 58–59 | Educational background; not current electrical code. | 2026-11-09 |
+| <a id="hw-s13"></a>HW-S13 | NOAA/NWS [outdoor lightning safety](https://www.weather.gov/safety/lightning-outdoors) | No outdoor work during thunderstorms. | 2026-11-09 |
+| <a id="hw-s14"></a>HW-S14 | Meshtastic target files **at the baseline commit**: [heltec-v3](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/variants/esp32s3/heltec_v3/platformio.ini), [rak4631](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/variants/nrf52840/rak4631/platformio.ini), [tracker-t1000-e](https://github.com/meshtastic/firmware/blob/54e0d8d0ab2ff56b3a9ce967e53f79e49af560fb/variants/nrf52840/tracker-t1000-e/platformio.ini) | All three environments exist with `actively_supported = true` and support level 1. The T1000-E environment builds without Wi-Fi (`MESHTASTIC_EXCLUDE_WIFI=1`). Build targets, not compiled or tested. | 2026-11-09 slice check |
+
+## US regulation
+
+Regulation text is from the official eCFR, Title 47 issue dated 2026-11-05.
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="reg-s01"></a>REG-S01 | [47 CFR §15.5](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-A/part-15/subpart-A/section-15.5) (a)–(c) | General conditions of operation. | 2026-11-09 |
+| <a id="reg-s02"></a>REG-S02 | [47 CFR §15.203](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-A/part-15/subpart-C/section-15.203) | Antenna requirement and exceptions. | 2026-11-09 |
+| <a id="reg-s03"></a>REG-S03 | [47 CFR §15.247](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-A/part-15/subpart-C/section-15.247) | Hopping, digital modulation, power, PSD, hybrid. | 2026-11-09 |
+| <a id="reg-s04"></a>REG-S04 | [47 CFR §15.249](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-A/part-15/subpart-C/section-15.249) | 902–928 MHz field-strength limits. | 2026-11-09 |
+| <a id="reg-s05"></a>REG-S05 | [47 CFR §97.113](https://www.ecfr.gov/current/title-47/chapter-I/subchapter-D/part-97/subpart-B/section-97.113) | Amateur prohibited transmissions. | 2026-11-09 |
+| <a id="reg-s06"></a>REG-S06 | eCFR versioner API, [Part 15](https://www.ecfr.gov/api/versioner/v1/full/2026-11-05/title-47.xml?part=15) and [Part 97](https://www.ecfr.gov/api/versioner/v1/full/2026-11-05/title-47.xml?part=97) | Official XML parsed for the sections above. | 2026-11-09 |
+| <a id="reg-s07"></a>REG-S07 | FCC [FCC ID guidance](https://www.fcc.gov/oet/ea/fccid); [Equipment Authorization search](https://apps.fcc.gov/oetcf/eas/reports/GenericSearch.cfm) | Both returned HTTP 403. **No device grant was retrieved.** | 2026-11-09 |
+
+## North Texas community
+
+Community guidance, not regulation. Check the live pages before relying on any value.
+
+| ID | Source and section | What was checked, and its limits | Checked |
+|---|---|---|---|
+| <a id="ntx-s01"></a>NTX-S01 | [NTX Mesh join/settings](https://ntxmesh.com/join/) | Recommended settings for DFW/North Texas. | 2026-11-09 |
+| <a id="ntx-s02"></a>NTX-S02 | [NTX Mesh preset map](https://ntxmesh.com/coverage-map/); [home](https://ntxmesh.com/) | County modem-preset image, not live coverage. | 2026-11-09 |
+| <a id="ntx-s03"></a>NTX-S03 | [NTXMesh/www at 310ac38](https://github.com/NTXMesh/www/tree/310ac38b379a95ed9d6fa1f655b66d238b65da44) | Source of the site; not compared byte-for-byte with the deployed pages. | 2026-11-09 |

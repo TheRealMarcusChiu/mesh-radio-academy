@@ -12,7 +12,7 @@ export const lessonSchema = z.object({
   /** Slugs of pages the learner should finish first; may be empty. */
   prerequisites: z.array(z.string().min(1)),
   difficulty: z.enum(['beginner', 'intermediate', 'advanced']),
-  /** Claim/source IDs from the research ledger, e.g. MT-ROUTE-01. */
+  /** Claim/source IDs from the research ledger, e.g. MT-C03. */
   sourceIds: z.array(z.string().regex(/^[A-Z][A-Z0-9]*(-[A-Z0-9]+)+$/, 'source id must look like ABC-123')).min(1),
   /** Firmware/client baseline the lesson was checked against. */
   baseline: z.string().min(1),

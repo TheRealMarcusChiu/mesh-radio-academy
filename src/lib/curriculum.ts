@@ -1,6 +1,6 @@
 /**
- * Planned module outline. These are goals, not finished lessons: no module is
- * published until its research evidence and review are in place.
+ * Module outline. A module gets a `slug` only once its lesson is published;
+ * the rest are goals, not finished lessons.
  */
 
 export type Track = 'shared' | 'meshtastic' | 'meshcore';
@@ -10,6 +10,8 @@ export interface PlannedModule {
   title: string;
   track: Track;
   goal: string;
+  /** Docs slug of the published lesson; absent while the module is still being written. */
+  slug?: string;
 }
 
 export const TRACK_LABELS: Record<Track, string> = {
@@ -19,9 +21,9 @@ export const TRACK_LABELS: Record<Track, string> = {
 };
 
 export const MODULES: readonly PlannedModule[] = [
-  { number: '00', title: 'Start here', track: 'shared', goal: 'Send a simulated message, follow it through each layer, and pick a learning path with or without radios.' },
-  { number: '01', title: 'RF and LoRa foundations', track: 'shared', goal: 'Read dB, dBm, RSSI and SNR, and predict how radio settings change airtime and link margin.' },
-  { number: '02', title: 'Hardware and first boot', track: 'shared', goal: 'Identify the parts of a node and check band, revision and support before flashing anything.' },
+  { number: '00', title: 'Start here', track: 'shared', slug: 'modules/00-start-here', goal: 'Send a simulated message, follow it through each layer, and pick a learning path with or without radios.' },
+  { number: '01', title: 'RF and LoRa foundations', track: 'shared', slug: 'modules/01-rf-foundations', goal: 'Read dB, dBm, RSSI and SNR, and predict how radio settings change airtime and link margin.' },
+  { number: '02', title: 'Hardware and first boot', track: 'shared', slug: 'modules/02-hardware-first-boot', goal: 'Identify the parts of a node and check band, revision and support before flashing anything.' },
   { number: '03', title: 'Your first Meshtastic link', track: 'meshtastic', goal: 'Configure two nodes, exchange a direct message, and diagnose one deliberate mismatch at a time.' },
   { number: '04', title: 'Meshtastic under the hood', track: 'meshtastic', goal: 'Trace a broadcast and a direct message through a small mesh and explain each relay decision.' },
   { number: '05', title: 'Your first MeshCore link', track: 'meshcore', goal: 'Set up two companions, add a contact, send a direct message, then add a repeater.' },

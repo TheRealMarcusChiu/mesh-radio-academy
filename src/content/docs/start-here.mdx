@@ -1,64 +1,14 @@
 ---
 title: Start here
-description: How Mesh Radio Academy works, what is ready today, and the learning paths it is building toward.
+description: Where to begin Mesh Radio Academy.
 ---
 
-import ProgressToggle from '../../components/ProgressToggle.astro';
+The course starts with **[Module 00: Start here](../modules/00-start-here/)**. It opens with a simulated
+message you send yourself, then explains each layer it passed through.
 
-Mesh Radio Academy teaches two community mesh radio systems, **Meshtastic**
-and **MeshCore**, side by side and without favoring either. Every required
-lesson and lab is designed to work in your browser without a radio. Hardware
-exercises will be optional extras.
+Also available now:
 
-## What is ready today
-
-This is the foundation of the site. You can:
-
-- [send a simulated message](../) and follow it through each layer,
-- read the [planned course outline](../curriculum/),
-- mark pages as read, which is stored only in this browser.
-
-The numbered lessons are **not written yet**. Each one is published only
-after its technical claims are checked against primary sources and the
-lesson is reviewed. Nothing on this site is a finished lesson until it
-says so.
-
-## Four layers to keep apart
-
-The message on the [home page](../) passes through four layers. The course
-keeps returning to them, because most confusion about mesh radios comes from
-mixing them up.
-
-| Layer | In plain words | Example on the home page |
-|---|---|---|
-| App | What you see and type | Writing and reading the message |
-| Phone–radio link | How your phone talks to your own radio | A short Bluetooth Low Energy link |
-| Mesh packet | The envelope mesh radios read to decide what to do | Radio A wraps the message; radio B opens it |
-| Radio signal | The physical transmission through the air | The hop from radio A to radio B |
-
-Two radios can share the same radio settings and still be unable to exchange
-messages if they speak different mesh protocols. The module on radio versus
-protocol will show exactly why.
-
-## How the course labels what it tells you
-
-- **Teaching model:** a simplified picture made to explain an idea, such as
-  the home page trace. Useful, but not a description of exact firmware
-  behavior.
-- **Design assumption:** a value chosen for an example, like a transmit
-  power in a calculation.
-- **Documented or measured fact:** something backed by a cited source or a
-  recorded test, with the version and date it applies to.
-
-## Planned learning paths
-
-These paths will open as lessons are published.
-
-1. **No hardware:** every lesson and lab in the browser, using simulations
-   and sample data.
-2. **Two radios:** the same lessons plus optional exercises with two of your
-   own nodes, after checking the rules where you live.
-3. **Operator:** planning, testing and maintaining a small neighborhood mesh
-   with your local community.
-
-<ProgressToggle page="start-here" />
+- [Module 01: RF and LoRa foundations](../modules/01-rf-foundations/)
+- [Module 02: Hardware and first boot](../modules/02-hardware-first-boot/)
+- [Routing playground](../labs/routing-playground/)
+- [Course outline](../curriculum/), showing which modules are available and which are still being written

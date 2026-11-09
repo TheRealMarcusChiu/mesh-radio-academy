@@ -1,0 +1,48 @@
+---
+// Starlight ThemeSelect override: Dark (default) or Light; no "follow system" option.
+import Select from '@astrojs/starlight/components/Select.astro';
+---
+
+<starlight-theme-select>
+  <Select
+    icon="moon"
+    label="Color theme"
+    options={[
+      { label: 'Dark', selected: true, value: 'dark' },
+      { label: 'Light', selected: false, value: 'light' },
+    ]}
+    width="6.25em"
+  />
+</starlight-theme-select>
+
+<script is:inline>
+  StarlightThemeProvider.updatePickers();
+</script>
+
+<script>
+  type Theme = 'dark' | 'light';
+  const KEY = 'starlight-theme';
+
+  function apply(theme: Theme) {
+    StarlightThemeProvider.updatePickers(theme);
+    document.documentElement.dataset.theme = theme;
+    try {
+      // Store only the opt-in; clearing returns the reader to the dark default.
+      if (theme === 'light') localStorage.setItem(KEY, 'light');
+      else localStorage.removeItem(KEY);
+    } catch {
+      // Storage blocked: the choice still applies for this page view.
+    }
+  }
+
+  class MraThemeSelect extends HTMLElement {
+    constructor() {
+      super();
+      this.querySelector('select')?.addEventListener('change', (e) => {
+        const value = (e.currentTarget as HTMLSelectElement).value;
+        apply(value === 'light' ? 'light' : 'dark');
+      });
+    }
+  }
+  customElements.define('starlight-theme-select', MraThemeSelect);
+</script>

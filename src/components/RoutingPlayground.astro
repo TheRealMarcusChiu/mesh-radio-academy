@@ -1,0 +1,549 @@
+---
+import { simulate, OMITTED_EFFECTS, type SimEvent } from '../lib/routing.ts';
+import { mtDiamond, mcKnownPath, SEEDS } from '../fixtures/routing.ts';
+import Cite from './Cite.astro';
+
+// Static walkthroughs: the same model, run at build time, readable without JavaScript.
+const walkthroughs: { title: string; setup: string; events: SimEvent[] }[] = [
+  {
+    title: 'Meshtastic: B and C can hear each other',
+    setup: 'Channel broadcast from A, hop limit 1, all CLIENT with rebroadcast ALL, seed 3 (B first).',
+    events: simulate(mtDiamond(), [{ type: 'send' }]).events,
+  },
+  {
+    title: 'Meshtastic: B and C cannot hear each other',
+    setup: 'Same as above, with the B–C link removed.',
+    events: simulate(mtDiamond({ bcAudible: false }), [{ type: 'send' }]).events,
+  },
+  {
+    title: 'MeshCore: broken B–D, explicit reset, recovery through C',
+    setup: 'A stores path [b2] to D and D stores [b2] to A. B–D is broken. The user sends, resets A’s path to D, then sends again.',
+    events: simulate(mcKnownPath(), [{ type: 'send' }, { type: 'reset-path', node: 'A', dest: 'D' }, { type: 'send' }]).events,
+  },
+];
+
+const pos: Record<string, [number, number]> = { A: [60, 130], B: [200, 46], C: [200, 214], D: [340, 130] };
+const edges = ['A-B', 'A-C', 'B-D', 'C-D', 'B-C'];
+---
+
+<section class="playground not-content" data-playground aria-labelledby="pg-title">
+  <h2 id="pg-title">Routing playground</h2>
+  <p class="pg-note">
+    A teaching model on one small graph. Both protocols get the same nodes and links; only the forwarding
+    rules differ. Event order is set by a seed, not by real radio timing, and nothing here predicts range.
+  </p>
+
+  <noscript>
+    <p class="pg-note">The interactive playground needs JavaScript. The text walkthroughs below show the same model's events.</p>
+  </noscript>
+
+  <div class="pg-ui" data-ui hidden>
+    <div class="pg-controls">
+      <fieldset>
+        <legend>Protocol</legend>
+        <label><input type="radio" name="pg-protocol" value="meshtastic" checked /> Meshtastic</label>
+        <label><input type="radio" name="pg-protocol" value="meshcore" /> MeshCore</label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Shared graph</legend>
+        <label><input type="checkbox" data-bc checked /> B and C can hear each other</label>
+        <label><input type="checkbox" data-bd checked /> B–D link works</label>
+        <label class="pg-select">
+          Tie order
+          <select data-seed>
+            <option value={SEEDS.bFirst}>Seed {SEEDS.bFirst}: B acts first</option>
+            <option value={SEEDS.cFirst}>Seed {SEEDS.cFirst}: C acts first</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Roles of B and C</legend>
+        {['B', 'C'].map((n) => (
+          <label class="pg-select">
+            {n}
+            <select data-role={n}>
+              <option value="CLIENT" data-for="meshtastic">CLIENT</option>
+              <option value="CLIENT_MUTE" data-for="meshtastic">CLIENT_MUTE</option>
+              <option value="ROUTER" data-for="meshtastic">ROUTER</option>
+              <option value="repeater" data-for="meshcore">Repeater</option>
+              <option value="companion" data-for="meshcore">Companion (repeat off)</option>
+            </select>
+          </label>
+        ))}
+      </fieldset>
+    </div>
+
+    <div class="pg-actions" role="group" aria-label="Playground actions">
+      <button type="button" class="btn btn-primary" data-send>Send</button>
+      <button type="button" class="btn" data-resetpath hidden>Reset A’s path to D</button>
+      <button type="button" class="btn" data-step>Step</button>
+      <button type="button" class="btn" data-run>Run to end</button>
+      <button type="button" class="btn" data-reset>Reset scenario</button>
+    </div>
+    <p class="pg-hint" data-hint></p>
+
+    <div class="pg-main">
+      <svg viewBox="0 0 400 260" class="pg-graph" role="img" aria-labelledby="pg-graph-title" data-graph>
+        <title id="pg-graph-title" data-graph-title>Diamond graph of nodes A, B, C and D</title>
+        {edges.map((e) => {
+          const [a, b] = e.split('-');
+          const [x1, y1] = pos[a];
+          const [x2, y2] = pos[b];
+          return (
+            <g class="edge" data-edge={e}>
+              <line x1={x1} y1={y1} x2={x2} y2={y2} />
+              <text x={(x1 + x2) / 2 + (e === 'B-C' ? 8 : 0)} y={(y1 + y2) / 2 - 4} class="edge-label" data-edge-label />
+            </g>
+          );
+        })}
+        {Object.entries(pos).map(([id, [x, y]]) => (
+          <g class="node" data-node={id}>
+            <circle cx={x} cy={y} r="22" />
+            <text x={x} y={y + 6} text-anchor="middle" class="node-id">{id}</text>
+            <text x={x} y={y + (id === 'C' ? 40 : -30)} text-anchor="middle" class="node-role" data-role-label />
+            <text x={x} y={y + (id === 'C' ? 54 : -44)} text-anchor="middle" class="node-status" data-status />
+          </g>
+        ))}
+      </svg>
+
+      <div class="pg-side">
+        <h3>State at this step</h3>
+        <ul class="pg-state" data-state></ul>
+        <table class="pg-metrics">
+          <caption>Counts so far</caption>
+          <tbody data-metrics></tbody>
+        </table>
+      </div>
+    </div>
+
+    <h3>Event log</h3>
+    <p class="pg-hint">Each line is one event: teaching tick, node, what it did and why, with the evidence it rests on.</p>
+    <ol class="pg-log" data-log></ol>
+    <p class="visually-hidden" aria-live="polite" data-live></p>
+  </div>
+
+  <details class="pg-walk">
+    <summary>Text walkthroughs (same model, no JavaScript needed)</summary>
+    {walkthroughs.map((w) => (
+      <section>
+        <h3>{w.title}</h3>
+        <p>{w.setup}</p>
+        <ol>
+          {w.events.map((e) => (
+            <li>
+              <span class="pg-tick">t{e.time}</span> <strong>{e.node}</strong>: {e.reason}{' '}
+              <Cite ids={e.claims.join(' ')} />
+            </li>
+          ))}
+        </ol>
+      </section>
+    ))}
+  </details>
+
+  <details class="pg-walk">
+    <summary>What this model leaves out</summary>
+    <ul>{OMITTED_EFFECTS.map((o) => <li>{o}</li>)}</ul>
+  </details>
+</section>
+
+<script>
+  import { createController, type Controller, type SimEvent, type Metrics } from '../lib/routing.ts';
+  import { mtDiamond, mcKnownPath } from '../fixtures/routing.ts';
+
+  const METRIC_LABELS: [keyof Metrics, string][] = [
+    ['rfTransmissions', 'Radio transmissions (all)'],
+    ['originTransmissions', 'New packets sent by their origin'],
+    ['relayTransmissions', 'Relay transmissions'],
+    ['controlTransmissions', 'Control transmissions (PATH, ACK)'],
+    ['uniqueDeliveries', 'Unique app deliveries'],
+    ['duplicatesHeard', 'Duplicates heard and dropped'],
+    ['cancelledRelays', 'Relays cancelled'],
+    ['retries', 'Retries of the same packet'],
+    ['confirmations', 'ACKs matched'],
+    ['unconfirmed', 'Sends with no confirmation'],
+  ];
+  const ACTION_STATUS: Partial<Record<SimEvent['action'], string>> = {
+    transmit: 'transmits',
+    deliver: 'got it',
+    'cancel-relay': 'cancelled',
+    'keep-relay': 'keeps relay',
+    'queue-relay': 'queued',
+    'no-relay': 'no relay',
+    ignore: 'ignores',
+    duplicate: 'duplicate',
+    'learn-path': 'learned path',
+    ack: 'ACK matched',
+    'no-confirmation': 'no ACK',
+  };
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-playground]')) {
+    const $ = <T extends Element = HTMLElement>(s: string) => root.querySelector<T>(s)!;
+    const $$ = <T extends Element = HTMLElement>(s: string) => [...root.querySelectorAll<T>(s)];
+    const claimBase = `${import.meta.env.BASE_URL.replace(/\/?$/, '/')}reference/claims/#`;
+    const bc = $<HTMLInputElement>('[data-bc]');
+    const bd = $<HTMLInputElement>('[data-bd]');
+    const seed = $<HTMLSelectElement>('[data-seed]');
+    const roleSel = { B: $<HTMLSelectElement>('[data-role="B"]'), C: $<HTMLSelectElement>('[data-role="C"]') };
+    const send = $<HTMLButtonElement>('[data-send]');
+    const resetPath = $<HTMLButtonElement>('[data-resetpath]');
+    const stepBtn = $<HTMLButtonElement>('[data-step]');
+    const runBtn = $<HTMLButtonElement>('[data-run]');
+    const hint = $('[data-hint]');
+    let protocol: 'meshtastic' | 'meshcore' = 'meshtastic';
+    let ctl: Controller;
+
+    const prefixes: Record<string, string> = { A: 'a1', B: 'b2', C: 'c3', D: 'd4' };
+    const fmtPath = (p: string[] | null | undefined) => (p ? `[${p.map((n) => prefixes[n]).join(', ')}]` : 'unknown');
+
+    function syncRoleOptions() {
+      for (const sel of Object.values(roleSel)) {
+        for (const opt of sel.options) opt.hidden = opt.disabled = opt.dataset.for !== protocol;
+        if (sel.selectedOptions[0]?.dataset.for !== protocol) sel.value = protocol === 'meshtastic' ? 'CLIENT' : 'repeater';
+      }
+    }
+
+    function rebuild() {
+      const opts = { bcAudible: bc.checked, bdWorks: bd.checked, seed: Number(seed.value) };
+      ctl =
+        protocol === 'meshtastic'
+          ? createController(mtDiamond({ ...opts, roles: { B: roleSel.B.value as never, C: roleSel.C.value as never } }))
+          : createController(mcKnownPath({ ...opts, roles: { B: roleSel.B.value as never, C: roleSel.C.value as never } }));
+      send.textContent = protocol === 'meshtastic' ? 'Send channel broadcast from A' : 'Send message A → D';
+      resetPath.hidden = protocol !== 'meshcore';
+      hint.textContent =
+        protocol === 'meshtastic'
+          ? 'A broadcasts on the channel; D is the node we watch. Press Send, then Step through the events.'
+          : 'A already stores the path [b2] to D. Try a send with B–D broken, then reset A’s path and send again.';
+      render();
+    }
+
+    function act(action: Parameters<Controller['dispatch']>[0]) {
+      ctl.run(); // settle earlier events first so the new action starts from a finished state
+      ctl.dispatch(action);
+      ctl.step();
+      render();
+    }
+
+    function render() {
+      const events = ctl.visibleEvents();
+      const current = events.at(-1);
+      const snap = ctl.snapshot();
+      const lastTx = [...events].reverse().find((e) => e.action === 'transmit');
+      const txNow = current && lastTx && current.time === lastTx.time ? lastTx.node : undefined;
+      const cfg = ctl.config;
+      const linked = (a: string, b: string) => cfg.links.some((l) => l.from === a && l.to === b);
+
+      for (const g of $$('[data-edge]')) {
+        const [a, b] = g.dataset.edge!.split('-');
+        const present = linked(a, b) && linked(b, a);
+        g.classList.toggle('is-absent', !present);
+        g.classList.toggle('is-active', present && !!txNow && (a === txNow || b === txNow));
+        g.querySelector('[data-edge-label]')!.textContent = present ? '' : 'no link';
+      }
+      for (const g of $$('[data-node]')) {
+        const id = g.dataset.node!;
+        const node = cfg.nodes.find((n) => n.id === id)!;
+        g.querySelector('[data-role-label]')!.textContent =
+          'prefix' in node ? (node.role === 'repeater' ? 'repeater' : 'companion') : node.role;
+        const mine = events.filter((e) => e.node === id && ACTION_STATUS[e.action]).at(-1);
+        g.querySelector('[data-status]')!.textContent = mine && mine.time === current?.time ? ACTION_STATUS[mine.action]! : '';
+        g.classList.toggle('is-tx', id === txNow);
+        g.classList.toggle('is-current', id === current?.node);
+        g.classList.toggle('has-delivered', snap.nodes[id].delivered.length > 0);
+      }
+      $('[data-graph-title]').textContent = current
+        ? `Diamond graph. Latest event at tick ${current.time}: ${current.node} ${current.action}.`
+        : 'Diamond graph of nodes A, B, C and D. Nothing sent yet.';
+
+      const state = $('[data-state]');
+      state.replaceChildren();
+      const line = (text: string) => {
+        const li = document.createElement('li');
+        li.textContent = text;
+        state.append(li);
+      };
+      if (protocol === 'meshcore') {
+        line(`A’s stored path to D: ${fmtPath(snap.nodes.A.outPaths.D)}`);
+        line(`D’s stored path to A: ${fmtPath(snap.nodes.D.outPaths.A)}`);
+        line(`A waiting for an ACK: ${snap.nodes.A.awaiting.length ? snap.nodes.A.awaiting.join(', ') : 'no'}`);
+      } else {
+        for (const id of ['B', 'C']) {
+          line(`${id} pending relays: ${snap.nodes[id].pendingRelays.length ? snap.nodes[id].pendingRelays.join(', ') : 'none'}`);
+        }
+      }
+      line(`Delivered to D’s app: ${snap.nodes.D.delivered.length ? snap.nodes.D.delivered.join(', ') : 'nothing yet'}`);
+
+      const m = ctl.metrics();
+      $('[data-metrics]').replaceChildren(
+        ...METRIC_LABELS.filter(([k]) => protocol === 'meshcore' || !['controlTransmissions', 'confirmations', 'unconfirmed'].includes(k)).map(([k, label]) => {
+          const tr = document.createElement('tr');
+          const th = document.createElement('th');
+          th.scope = 'row';
+          th.textContent = label;
+          const td = document.createElement('td');
+          td.textContent = String(m[k]);
+          tr.append(th, td);
+          return tr;
+        }),
+      );
+
+      const log = $('[data-log]');
+      log.replaceChildren(
+        ...events.map((e, i) => {
+          const li = document.createElement('li');
+          if (i === events.length - 1) li.className = 'is-current';
+          const tick = document.createElement('span');
+          tick.className = 'pg-tick';
+          tick.textContent = `t${e.time}`;
+          const who = document.createElement('strong');
+          who.textContent = e.node;
+          li.append(tick, ' ', who, `: ${e.reason} `);
+          const cite = document.createElement('span');
+          cite.className = 'cite';
+          cite.append('[');
+          e.claims.forEach((c, j) => {
+            if (j) cite.append(', ');
+            const a = document.createElement('a');
+            a.href = claimBase + c.toLowerCase();
+            a.textContent = c;
+            cite.append(a);
+          });
+          cite.append(']');
+          li.append(cite);
+          return li;
+        }),
+      );
+      if (!events.length) {
+        const li = document.createElement('li');
+        li.className = 'pg-empty';
+        li.textContent = 'No events yet. Press Send.';
+        log.append(li);
+      }
+      $('[data-live]').textContent = current ? `Tick ${current.time}, ${current.node}: ${current.reason}` : '';
+      stepBtn.disabled = runBtn.disabled = !ctl.canStep();
+    }
+
+    for (const r of $$<HTMLInputElement>('input[name="pg-protocol"]')) {
+      r.addEventListener('change', () => {
+        protocol = r.value as typeof protocol;
+        bd.checked = protocol === 'meshtastic'; // each protocol's starting scenario
+        syncRoleOptions();
+        rebuild();
+      });
+    }
+    for (const el of [bc, bd, seed, roleSel.B, roleSel.C]) el.addEventListener('change', rebuild);
+    send.addEventListener('click', () => act({ type: 'send' }));
+    resetPath.addEventListener('click', () => act({ type: 'reset-path', node: 'A', dest: 'D' }));
+    stepBtn.addEventListener('click', () => {
+      ctl.step();
+      render();
+    });
+    runBtn.addEventListener('click', () => {
+      ctl.run();
+      render();
+    });
+    $('[data-reset]').addEventListener('click', () => {
+      ctl.reset();
+      render();
+    });
+
+    syncRoleOptions();
+    rebuild();
+    $('[data-ui]').hidden = false;
+  }
+</script>
+
+<style>
+  .playground {
+    margin-block: 1.5rem;
+  }
+  .pg-note,
+  .pg-hint {
+    color: var(--sl-color-gray-3);
+    max-width: 66ch;
+  }
+  .pg-ui[hidden] {
+    display: none;
+  }
+  .pg-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+  fieldset {
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+    padding: 0.5rem 1rem 0.75rem;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-width: 12rem;
+  }
+  legend {
+    padding-inline: 0.25rem;
+    font-weight: 600;
+  }
+  fieldset label {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.75rem;
+  }
+  input[type='radio'],
+  input[type='checkbox'] {
+    width: 1.25rem;
+    height: 1.25rem;
+    accent-color: var(--sl-color-accent);
+  }
+  .pg-select select {
+    min-height: 2.75rem;
+    font: inherit;
+    color: var(--sl-color-white);
+    background: var(--sl-color-gray-6);
+    border: 1px solid var(--sl-color-gray-4);
+    border-radius: 0.25rem;
+    padding-inline: 0.5rem;
+  }
+  .pg-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    margin-block: 1.25rem 0.25rem;
+  }
+  .pg-main {
+    display: grid;
+    grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+  @media (max-width: 50rem) {
+    .pg-main {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+  .pg-graph {
+    width: 100%;
+    height: auto;
+    font-family: var(--__sl-font);
+  }
+  .edge line {
+    stroke: var(--sl-color-gray-3);
+    stroke-width: 2;
+  }
+  .edge.is-absent line {
+    stroke: var(--sl-color-gray-5);
+    stroke-dasharray: 3 6;
+  }
+  .edge.is-active line {
+    stroke: var(--sl-color-accent);
+    stroke-width: 5;
+  }
+  .edge-label {
+    font-size: 11px;
+    fill: var(--sl-color-gray-3);
+  }
+  .node circle {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-3);
+    stroke-width: 2;
+  }
+  .node.has-delivered circle {
+    stroke: var(--sl-color-gray-1);
+    stroke-width: 4;
+  }
+  .node.is-tx circle {
+    fill: var(--sl-color-accent-low);
+    stroke: var(--sl-color-accent);
+    stroke-width: 4;
+  }
+  .node.is-current .node-id {
+    text-decoration: underline;
+  }
+  .node-id {
+    font-size: 18px;
+    font-weight: 700;
+    fill: var(--sl-color-white);
+  }
+  .node-role {
+    font-size: 11px;
+    fill: var(--sl-color-gray-3);
+  }
+  .node-status {
+    font-size: 12px;
+    font-weight: 600;
+    fill: var(--sl-color-accent-high);
+  }
+  .pg-side h3 {
+    font-size: var(--sl-text-lg);
+    margin-top: 0;
+  }
+  .pg-state {
+    padding-inline-start: 1.25rem;
+  }
+  .pg-metrics {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: var(--sl-text-sm);
+  }
+  .pg-metrics caption {
+    text-align: start;
+    font-weight: 600;
+    padding-block: 0.5rem;
+  }
+  .pg-metrics th,
+  .pg-metrics td {
+    text-align: start;
+    padding: 0.25rem 0.5rem 0.25rem 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+    font-weight: 400;
+  }
+  .pg-metrics td {
+    text-align: end;
+    font-variant-numeric: tabular-nums;
+  }
+  .pg-log {
+    padding-inline-start: 2rem;
+    max-width: 72ch;
+  }
+  .pg-log li,
+  .pg-walk li {
+    margin-block: 0.4rem;
+  }
+  .pg-log li.is-current {
+    border-inline-start: 3px solid var(--sl-color-accent);
+    padding-inline-start: 0.5rem;
+  }
+  .pg-empty {
+    list-style: none;
+    color: var(--sl-color-gray-3);
+  }
+  .pg-tick {
+    font-variant-numeric: tabular-nums;
+    color: var(--sl-color-gray-3);
+  }
+  .cite {
+    font-size: var(--sl-text-xs);
+    color: var(--sl-color-gray-3);
+  }
+  .cite a {
+    color: inherit;
+  }
+  .pg-walk {
+    margin-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+    padding-top: 0.75rem;
+  }
+  .pg-walk summary {
+    cursor: pointer;
+    font-weight: 600;
+    min-height: 2.75rem;
+    display: flex;
+    align-items: center;
+  }
+  .pg-walk h3 {
+    font-size: var(--sl-text-lg);
+  }
+</style>

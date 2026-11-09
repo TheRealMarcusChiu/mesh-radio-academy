@@ -1,0 +1,10 @@
+---
+// Starlight PageTitle override: default title, then the validated lesson metadata when present.
+import Default from '@astrojs/starlight/components/PageTitle.astro';
+import LessonMeta from './LessonMeta.astro';
+
+const lesson = (Astro.locals.starlightRoute.entry.data as { lesson?: import('../lib/lesson-schema.ts').LessonMeta }).lesson;
+---
+
+<Default />
+{lesson && <LessonMeta lesson={lesson} />}

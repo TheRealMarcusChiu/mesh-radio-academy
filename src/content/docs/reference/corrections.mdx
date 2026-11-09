@@ -1,0 +1,44 @@
+---
+title: Corrections and reporting
+description: Dated places where official documentation and pinned code disagree, changes to the course's own evidence, and how to report a problem.
+---
+
+import Cite from '../../../components/Cite.astro';
+
+The course follows the pinned code when official prose and implementation disagree, and records each case
+here. Newest entries first.
+
+## 2026-11-09: first lessons and evidence ledger
+
+**Documentation versus pinned code**
+
+- **Meshtastic DM "signatures".** The archived 2.7 encryption page says direct messages are signed. The pinned
+  code authenticates them with AES-CCM and attaches no separate public-key signature. <Cite ids="MT-C18" />
+- **Meshtastic retry count.** The archived docs say "resent a maximum of three times". The pinned code
+  schedules the initial send plus two retransmissions for an isolated sender. <Cite ids="MT-C12" />
+- **MeshCore ACK "CRC".** The payload document calls the ACK value a CRC; the code computes it with truncated
+  SHA-256. <Cite ids="MC-030" />
+- **MeshCore 64-hop capacity.** The docs advertise 64 one-byte hops, but a six-bit count can encode at most 63.
+  <Cite ids="MC-016" />
+- **MeshCore multibyte paths.** The packet-format introduction refers to v1.12, while the CLI docs place the
+  transition at v1.14. The course uses the narrower CLI statement. <Cite ids="MC-015" />
+- **"Companions can never repeat."** False for MeshCore 1.18.0: repeating is off by default but
+  configurable. <Cite ids="MC-004" />
+
+**Course evidence**
+
+- **Hardware targets re-pinned.** Early hardware research cited a Meshtastic *development* commit for board
+  targets. Lessons now cite the targets at the selected 2.7.26 baseline commit. <Cite ids="HW-C11 HW-S14" />
+- **Role documentation.** Role claims use the archived 2.7 device docs rather than the current 2.8 page.
+  <Cite ids="MT-S13 HW-C08" />
+- **North Texas intervals.** The community page's broadcast-interval table and its detailed prose disagree. The
+  course doesn't merge them into one value. <Cite ids="NTX-C03" />
+- **Semtech SNR figures.** The datasheet PDF could not be text-extracted during the lesson build, so Module 01
+  explains SNR without quoting per-spreading-factor thresholds. <Cite ids="RF-S01" />
+
+## Report a problem
+
+Found a factual error, an outdated version, a broken link or something unclear?
+[Open an issue on GitHub](https://github.com/TheRealMarcusChiu/mesh-radio-academy/issues). Please include the
+page, the claim ID if there is one, and your source. Don't post private keys, configuration exports, QR codes
+or precise locations.

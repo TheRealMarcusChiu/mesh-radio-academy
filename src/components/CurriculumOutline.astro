@@ -6,20 +6,25 @@ interface Props {
 }
 const { headingLevel = 'h3' } = Astro.props;
 const H = headingLevel;
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+const available = MODULES.filter((m) => m.slug).length;
 ---
 
 <div class="outline not-content">
   <p class="outline-status">
-    <strong>Planned outline.</strong> None of these modules is written yet. Each one
+    <strong>{available} of {MODULES.length} modules are available.</strong> The rest are being written; each
     is published only after its sources are checked and the lesson is reviewed.
   </p>
   <ol class="modules">
     {MODULES.map((m) => (
-      <li class={`module track-${m.track}`}>
+      <li class:list={['module', `track-${m.track}`, { 'is-planned': !m.slug }]}>
         <span class="module-num" aria-hidden="true">{m.number}</span>
         <div>
-          <H class="module-title"><span class="visually-hidden">Module {m.number}: </span>{m.title}</H>
-          <p class="module-meta">{TRACK_LABELS[m.track]}, planned, not yet available</p>
+          <H class="module-title">
+            <span class="visually-hidden">Module {m.number}: </span>
+            {m.slug ? <a href={`${base}${m.slug}/`}>{m.title}</a> : m.title}
+          </H>
+          <p class="module-meta">{TRACK_LABELS[m.track]}, {m.slug ? 'available' : 'being written, not yet available'}</p>
           <p class="module-goal">{m.goal}</p>
         </div>
       </li>
@@ -64,6 +69,10 @@ const H = headingLevel;
   .module-goal {
     margin: 0;
     max-width: 62ch;
+  }
+  .is-planned .module-title,
+  .is-planned .module-goal {
+    color: var(--sl-color-gray-3);
   }
   /* Tracks: equal weight; told apart by the text label and border style, color only reinforces. */
   .track-meshtastic {

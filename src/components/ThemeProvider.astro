@@ -1,0 +1,32 @@
+---
+// Starlight ThemeProvider override: dark by default, light only when the reader chose it.
+import { Icon } from '@astrojs/starlight/components';
+---
+
+{/* Inlined to avoid a flash of the wrong theme. Storage access can throw when blocked. */}
+<script is:inline>
+  window.StarlightThemeProvider = (() => {
+    let stored = null;
+    try {
+      stored = localStorage.getItem('starlight-theme');
+    } catch {}
+    document.documentElement.dataset.theme = stored === 'light' ? 'light' : 'dark';
+    return {
+      updatePickers(theme = stored === 'light' ? 'light' : 'dark') {
+        document.querySelectorAll('starlight-theme-select').forEach((picker) => {
+          const select = picker.querySelector('select');
+          if (select) select.value = theme;
+          const tmpl = document.querySelector('#theme-icons');
+          const newIcon = tmpl && tmpl.content.querySelector('.' + theme);
+          const oldIcon = picker.querySelector('svg.label-icon');
+          if (newIcon && oldIcon) oldIcon.replaceChildren(...newIcon.cloneNode(true).childNodes);
+        });
+      },
+    };
+  })();
+</script>
+
+<template id="theme-icons">
+  <Icon name="sun" class="light" />
+  <Icon name="moon" class="dark" />
+</template>

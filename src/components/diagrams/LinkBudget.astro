@@ -1,0 +1,95 @@
+---
+// RF-F03 synthetic link budget as a staircase, with the assumed sensitivity line.
+const steps = [
+  { label: 'Transmit power', delta: 14, total: 14 },
+  { label: 'Transmit antenna gain', delta: 2, total: 16 },
+  { label: 'Transmit cable loss', delta: -1, total: 15 },
+  { label: 'Path loss (assumed)', delta: -115, total: -100 },
+  { label: 'Receive antenna gain', delta: 2, total: -98 },
+  { label: 'Receive cable loss', delta: -1, total: -99 },
+];
+const top = 20; // dBm at y=20
+const yOf = (dbm: number) => 20 + (top - dbm) * 1.6;
+const x = (i: number) => 40 + i * 52;
+const sens = -120;
+const fmt = (n: number) => (n > 0 ? `+${n}` : `${n}`).replace('-', '−');
+---
+
+<figure class="diagram not-content">
+  <svg viewBox="0 0 440 270" role="img" aria-labelledby="lb-title lb-desc">
+    <title id="lb-title">Synthetic link budget: −99 dBm received, 21 dB margin</title>
+    <desc id="lb-desc">
+      A staircase of power levels from left to right: 14 dBm transmit, plus 2 dB antenna gain, minus 1 dB
+      cable loss, minus 115 dB path loss, plus 2 dB antenna gain, minus 1 dB cable loss, ending at −99 dBm.
+      A dashed line at −120 dBm marks the assumed receiver sensitivity. The 21 dB gap between them is the margin.
+    </desc>
+    <line x1="30" y1={yOf(0)} x2="430" y2={yOf(0)} class="axis" />
+    <text x="26" y={yOf(0) + 4} text-anchor="end" class="tick">0</text>
+    <text x="26" y={yOf(-100) + 4} text-anchor="end" class="tick">−100</text>
+    <text x="4" y="12" class="tick">dBm</text>
+    <line x1="30" y1={yOf(sens)} x2="430" y2={yOf(sens)} class="sens" />
+    <text x="436" y={yOf(sens) + 14} text-anchor="end" class="tick">assumed sensitivity −120 dBm</text>
+    {steps.map((s, i) => (
+      <g>
+        <line x1={x(i)} y1={yOf(s.total)} x2={x(i) + 44} y2={yOf(s.total)} class="level" />
+        {i > 0 && <line x1={x(i)} y1={yOf(steps[i - 1].total)} x2={x(i)} y2={yOf(s.total)} class="riser" />}
+        <text x={x(i) + 22} y={yOf(s.total) - 6} text-anchor="middle" class="val">{fmt(s.delta)}</text>
+      </g>
+    ))}
+    <line x1="352" y1={yOf(-99)} x2="352" y2={yOf(sens)} class="margin" />
+    <text x="360" y={yOf(-110) + 4} class="val">margin 21 dB</text>
+    <text x={x(5) + 22} y={yOf(-99) + 16} text-anchor="middle" class="val">−99 dBm</text>
+  </svg>
+  <figcaption>Each step adds or subtracts decibels. The values are synthetic teaching inputs, not measurements.</figcaption>
+  <table>
+    <caption>Text version: running total</caption>
+    <thead><tr><th scope="col">Step</th><th scope="col">Change</th><th scope="col">Running total</th></tr></thead>
+    <tbody>
+      {steps.map((s) => (
+        <tr><td>{s.label}</td><td>{fmt(s.delta)} dB{s.label === 'Transmit power' ? 'm' : ''}</td><td>{fmt(s.total)} dBm</td></tr>
+      ))}
+      <tr><td>Assumed receiver sensitivity</td><td>n/a</td><td>−120 dBm</td></tr>
+      <tr><th scope="row">Link margin</th><td colspan="2">−99 − (−120) = <strong>21 dB</strong></td></tr>
+    </tbody>
+  </table>
+</figure>
+
+<style>
+  svg {
+    width: 100%;
+    max-width: 32rem;
+    height: auto;
+    display: block;
+    font-family: var(--__sl-font);
+  }
+  text {
+    fill: var(--sl-color-gray-1);
+  }
+  .tick {
+    font-size: 11px;
+    fill: var(--sl-color-gray-3);
+  }
+  .val {
+    font-size: 12px;
+  }
+  .axis {
+    stroke: var(--sl-color-gray-4);
+  }
+  .level {
+    stroke: var(--sl-color-gray-1);
+    stroke-width: 3;
+  }
+  .riser {
+    stroke: var(--sl-color-gray-3);
+    stroke-width: 1.5;
+    stroke-dasharray: 2 3;
+  }
+  .sens {
+    stroke: var(--sl-color-gray-2);
+    stroke-dasharray: 6 4;
+  }
+  .margin {
+    stroke: var(--sl-color-accent);
+    stroke-width: 3;
+  }
+</style>

@@ -1,0 +1,223 @@
+---
+title: 'Module 01: RF and LoRa foundations'
+description: Frequency, wavelength, antennas, line of sight, decibels, link budgets, RSSI and SNR, and what decides how long a LoRa packet stays on the air.
+lesson:
+  module: '01'
+  outcomes:
+    - Convert between dBm and milliwatts and add gains and losses in dB.
+    - Work through a link budget and explain what the margin does and does not promise.
+    - Explain wavelength, antenna gain, polarization, line of sight and Fresnel clearance.
+    - Say what RSSI and SNR measure, and why a strong RSSI alone does not guarantee a packet gets through.
+    - Predict how spreading factor, bandwidth, coding rate, preamble, header, CRC, payload bytes, hops and retries change airtime.
+  estimatedMinutes: 40
+  prerequisites: ['modules/00-start-here']
+  difficulty: beginner
+  sourceIds: [RF-C01, RF-C02, RF-C03, RF-C04, RF-C05, RF-C06, RF-C07, RF-C09, RF-C10, RF-C11, RF-C12, RF-C13, RF-C14, RF-C15, MT-C27]
+  baseline: 'SX1276 Rev. 4 airtime formula; ITU-R P.525-5; Meshtastic 2.7 radio-settings docs'
+  reviewed: 2026-11-09
+---
+
+import LinkBudget from '../../../components/diagrams/LinkBudget.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+Everything in Module 00 rested on one radio hearing another. This module gives you the vocabulary and the
+arithmetic to reason about *whether* it will, and how much of the shared airwaves each message uses. All
+numbers here are worked examples with stated inputs, not predictions for your location.
+
+## Frequency and wavelength
+
+**Frequency** is how many times per second the signal oscillates, in hertz (Hz). LoRa mesh radios in the US
+use the 902–928 MHz band; other regions use other bands, which is why region and band come first in every setup. <Cite ids="REG-C04 HW-C01" />
+
+**Wavelength** (λ) is the distance one oscillation covers: λ = c / f, where c ≈ 299,792,458 m/s.
+
+- At 915 MHz: λ = 299,792,458 / 915,000,000 ≈ **0.328 m** (about 33 cm).
+- At 868 MHz: λ ≈ **0.345 m**. <Cite ids="RF-C10" />
+
+Antennas are built for a band. A 915 MHz antenna on an 868 MHz radio, or no antenna at all, wastes signal and
+can damage some transmitters. <Cite ids="HW-C09" /> Module 02 covers this for specific boards.
+
+## Antennas, gain and polarization
+
+An antenna doesn't add power. **Gain**, in dBi, means it concentrates the same power in some directions
+at the expense of others, compared with an ideal antenna radiating equally in every direction. A higher-gain
+antenna is not automatically better: it may point energy away from where your neighbors are.
+
+**Polarization** is the orientation of the signal's electric field. Two vertical antennas match; one vertical
+and one horizontal lose signal to the mismatch. Simple path-loss formulas assume matched polarization. <Cite ids="RF-C14" />
+
+## Line of sight and Fresnel clearance
+
+Seeing the other antenna is not the whole story. The radio energy travels in a fat, football-shaped region
+around the straight line between antennas, called the **first Fresnel zone**. Obstacles that poke into that
+region (rooftops, trees, terrain) can add loss even when you have visual line of sight.
+
+Its radius at a point d1 from one end and d2 from the other is r = √(λ · d1 · d2 / (d1 + d2)). <Cite ids="RF-C11" />
+
+**Worked example.** A 2 km link at 915 MHz, measured at the midpoint (d1 = d2 = 1000 m):
+r = √(0.328 × 1000 × 1000 / 2000) ≈ **12.8 m**. The zone is about 12.8 m in radius halfway along, which is one
+reason antenna height matters so much. This is geometry, not a coverage prediction.
+
+## Decibels: dB and dBm
+
+Radio power spans enormous ranges, so engineers use logarithms.
+
+- **dB** is a *ratio*: 10 × log10(P2 / P1). +3 dB is about double, +10 dB is ten times, −3 dB about half.
+- **dBm** is an *absolute* power relative to 1 milliwatt: 0 dBm = 1 mW. <Cite ids="RF-C09" />
+
+| dBm | Power |
+|---|---|
+| 0 dBm | 1 mW |
+| 10 dBm | 10 mW |
+| 14 dBm | ≈ 25 mW |
+| 17 dBm | ≈ 50 mW |
+| 20 dBm | 100 mW |
+| 30 dBm | 1 W |
+
+Adding dB to dBm gives dBm: 14 dBm + 3 dB = 17 dBm, roughly doubling 25 mW to 50 mW. Adding two dBm values
+directly is a common mistake. It doesn't mean anything.
+
+## Worked example: a link budget
+
+A **link budget** adds up every gain and loss between transmitter and receiver, in dB. The values below are
+synthetic teaching inputs. <Cite ids="RF-C07" />
+
+<LinkBudget />
+
+- Received power: 14 + 2 − 1 − 115 + 2 − 1 = **−99 dBm**.
+- The receiver's **sensitivity** is the weakest signal it can decode at given settings. Here we *assume*
+  −120 dBm. Real sensitivity depends on the chip and on spreading factor and bandwidth.
+- **Link margin** = received − sensitivity = −99 − (−120) = **21 dB** of headroom.
+- Add 25 dB of extra assumed loss, for a wall of trees say: received becomes −124 dBm and the margin **−4 dB**.
+  The model now says the link is below the assumed sensitivity.
+
+Where did 115 dB of path loss come from? It is an assumed number. For comparison, the free-space formula
+gives about **91.6 dB** at 915 MHz over 1 km with nothing in the way. <Cite ids="RF-C06" /> Real paths add terrain,
+buildings, foliage and fading on top. A positive margin is a planning signal, not a promise of delivery or range,
+and it says nothing about whether a power or antenna setting is legal.
+
+## RSSI and SNR: what the radio reports
+
+- **RSSI** (received signal strength indicator) is the radio's estimate of received power, in dBm.
+- **SNR** (signal-to-noise ratio) compares the signal with the background noise, in dB. <Cite ids="RF-C12" />
+
+Why a strong RSSI isn't enough:
+
+1. **Collisions.** Two transmitters that can't hear each other may send at the same moment. A receiver
+   between them hears plenty of energy but decodes neither packet. These are called **hidden transmitters**.
+   <Cite ids="RF-C13" />
+2. **Wrong settings or protocol.** A strong signal on mismatched settings, or in a different mesh protocol,
+   still doesn't become a message (Module 00).
+3. **Wrong key or routing.** A packet can arrive intact and still not be readable or not be meant for you.
+
+You can see hidden transmitters on the [routing playground](../../labs/routing-playground/): untick "B and C can
+hear each other" and watch C transmit even though B already did. The playground doesn't model collisions,
+but in a real network those two transmissions could overlap at D.
+
+## Airtime: what makes a packet take longer
+
+Every packet occupies the channel for a while, and everyone nearby shares that channel. Longer airtime means
+more chance of overlapping with someone else and more battery used. The classic Semtech formula for SX1276-class
+radios ties airtime to these inputs: <Cite ids="RF-C01 RF-C02" />
+
+| Input | Effect on airtime |
+|---|---|
+| **Spreading factor (SF)** | Each step up doubles the symbol time (Ts = 2^SF / BW). More robust, much slower. <Cite ids="MT-C27" /> |
+| **Bandwidth (BW)** | Doubling the bandwidth halves the symbol time. Faster, but the Meshtastic docs note less link budget. <Cite ids="MT-C27" /> |
+| **Coding rate (CR)** | 4/5 to 4/8 adds redundancy bits that help against noise and cost more symbols. |
+| **Preamble** | Extra symbols sent before the data so the receiver can lock on. |
+| **Explicit header and CRC** | The header describes the packet; the CRC lets the receiver check it. Both add bits. |
+| **Payload bytes** | More physical bytes means more symbols. Mesh headers and encryption add bytes on top of your text. <Cite ids="RF-C05" /> |
+| **Hops and retries** | Each relay and each retry is a whole extra packet on the air. |
+
+**Worked example.** 20 physical bytes, SF7, 125 kHz, CR 4/5, 8-symbol preamble, explicit header, CRC on:
+
+- Symbol time Ts = 2⁷ / 125,000 = **1.024 ms**.
+- The formula gives 43 payload symbols, plus 8 + 4.25 preamble symbols.
+- Airtime = (12.25 + 43) × 1.024 ms = **56.576 ms**. Ten identical packets: **565.76 ms**. <Cite ids="RF-C03" />
+
+The same packet at **SF12** (low-data-rate optimization on, which the datasheet requires when a symbol lasts
+over 16 ms) takes **1318.912 ms**, over 23 times longer. <Cite ids="RF-C04 RF-C02" />
+
+Note that 20 *physical* bytes is not a 20-character message. The mesh protocol adds its own header and
+cryptographic bytes before the radio sees them.
+
+## Predict before you check
+
+Starting from the SF7 example, change **one** thing at a time. Rank these by airtime, shortest first:
+(a) SF8, (b) bandwidth 250 kHz, (c) coding rate 4/8.
+
+<details>
+<summary>Answer</summary>
+
+(b) 250 kHz: **28.288 ms**, half, because symbol time halves.
+(c) CR 4/8: **78.08 ms**, 64 payload symbols instead of 43.
+(a) SF8: **102.912 ms**. Symbol time doubles to 2.048 ms, but only 38 payload symbols are needed, so it is
+a bit less than double. <Cite ids="RF-C15" />
+
+If you guessed SF8 is exactly double, you've spotted the main effect. The payload symbol count also shifts
+slightly with SF.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. A radio transmits at 20 dBm into a cable with 2 dB loss and an antenna with 3 dBi gain. What leaves the antenna, in dBm?</summary>
+
+20 − 2 + 3 = **21 dBm**. Gains and losses in dB add to a dBm starting value. Note that what counts toward a
+legal limit depends on the specific rule and device authorization, which a later module covers.
+</details>
+
+<details>
+<summary>2. Your radio shows a strong RSSI from a neighbor's node, but your messages to them keep failing. Name two possible causes that RSSI cannot reveal.</summary>
+
+Any two of: collisions with a hidden transmitter; a different mesh protocol; mismatched channel or key;
+routing problems further along; the neighbor's reply path failing. RSSI only says energy arrived. <Cite ids="RF-C12" />
+</details>
+
+<details>
+<summary>3. A link has a 21 dB margin on paper. Does that mean messages will always get through?</summary>
+
+No. The margin rests on assumed path loss and sensitivity. Real paths add obstruction, fading and
+interference; traffic adds collisions. It is a planning number to compare designs, not a guarantee.
+</details>
+
+<details>
+<summary>4. Two hilltops are in plain view of each other, but the midpoint of the path skims a ridge 5 m below the straight line. Why might the link still be weak?</summary>
+
+The ridge sits inside the first Fresnel zone, which here is many meters wide. Visual line of sight is not
+the same as a clear Fresnel zone. <Cite ids="RF-C11" />
+</details>
+
+<details>
+<summary>Engineering detail: the full airtime expression</summary>
+
+From the Semtech SX1276/77/78/79 datasheet (Rev. 4, §4.1.1.7), with BW in Hz, CR = 1…4 for 4/5…4/8, PL the
+physical payload in bytes, IH = 1 for implicit header, CRC = 1 when on, DE = 1 for low-data-rate optimization:
+
+```text
+Ts        = 2^SF / BW
+Npayload  = 8 + max( ceil( (8·PL − 4·SF + 28 + 16·CRC − 20·IH) / (4·(SF − 2·DE)) ) · (CR + 4), 0 )
+Tpacket   = (Npreamble + 4.25 + Npayload) · Ts
+```
+
+This form is checked for SF7–SF12 on SX1276-class radios. Other chips (SX1262, LR1110) support further
+modes that need their own references. Semtech's LoRaMac-node driver rounds the result up to whole
+milliseconds (57 ms and 1319 ms for the two examples above). <Cite ids="RF-C01 RF-C03 RF-C04" />
+
+The Meshtastic 2.7 docs summarize the same trade-offs: each SF step roughly doubles airtime and adds about
+2.5 dB of link budget; their preset table assumes 22 dBm and a 0 dBi antenna. <Cite ids="MT-C27" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="RF-C01 RF-C02 RF-C03 RF-C04 RF-C05 RF-C06 RF-C07 RF-C09 RF-C10 RF-C11 RF-C12 RF-C13 RF-C14 RF-C15 MT-C27" />
+- Sources: <Cite ids="RF-S01 RF-S02 RF-S03 RF-S05 RF-S06 MT-S33" />
+
+## Next
+
+[Module 02: Hardware and first boot](../02-hardware-first-boot/). What is inside a node, how to pick one
+from evidence, and how to power it up safely.
+
+<ProgressToggle page="modules/01-rf-foundations" />

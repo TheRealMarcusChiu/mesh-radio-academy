@@ -1,0 +1,148 @@
+---
+title: 'Module 00: Start here'
+description: Send a simulated message, follow it through each layer, see why two LoRa radios can still fail to talk, and pick a learning path.
+lesson:
+  module: '00'
+  outcomes:
+    - Follow a message from phone over BLE to a radio, across LoRa to a second radio, and into the receiving app.
+    - Tell apart radio settings, LoRa modulation, the mesh protocol, the phone-to-radio link and LoRaWAN.
+    - Explain why two radios with matching LoRa settings can still be unable to exchange messages.
+    - Say which parts keep working when internet and cellular service are down.
+    - Choose the no-hardware, two-radio or operator learning path.
+  estimatedMinutes: 20
+  prerequisites: []
+  difficulty: beginner
+  sourceIds: [LW-C01, LW-C02, LW-C03, MT-C07, MT-C08, MC-005, MC-018, MT-C22]
+  baseline: 'Meshtastic 2.7.26.54e0d8d Beta and MeshCore 1.18.0'
+  reviewed: 2026-11-09
+---
+
+import LayerTrace from '../../../components/LayerTrace.astro';
+import LayerStack from '../../../components/diagrams/LayerStack.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+<LayerTrace />
+
+## What just happened
+
+You sent a message through four separate layers. Most confusion about mesh radios comes from mixing them
+up, so here they are with one more term you will meet: LoRaWAN.
+
+| Term | What it is | On the trace above |
+|---|---|---|
+| **Radio settings** | The frequency, bandwidth, spreading factor and coding rate a radio transmits and listens on. Both ends must match to hear each other. | Not shown; both radios agree. |
+| **LoRa modulation** | The way the radio turns bits into a radio signal and back. It is a *physical layer*: it carries bits, not messages. <Cite ids="LW-C01" /> | The wavy hop from radio A to radio B. |
+| **Mesh protocol** | The packet format and forwarding rules on top of LoRa: who sent it, who should relay it, how duplicates are dropped. Meshtastic and MeshCore each have their own. <Cite ids="LW-C02" /> | Radio A builds a packet; radio B opens it. |
+| **Phone–radio link** | A short local link, often Bluetooth Low Energy (BLE) or USB, carrying an *app protocol* between your phone and your own radio. It is not the over-the-air packet. <Cite ids="LW-C03 MC-018" /> | The dotted hops at each end. |
+| **LoRaWAN** | A different system that also uses LoRa: devices send to gateways, which forward over the internet to a network server. It is not a peer-to-peer mesh, and this course does not use it. <Cite ids="LW-C01" /> | Not involved. |
+
+## Worked example: same radio, different protocol
+
+Two neighbors each buy the same model of radio. Rin installs Meshtastic, Dev installs MeshCore, and by
+coincidence both radios are set to the same frequency, bandwidth, spreading factor and coding rate.
+
+1. Rin sends "hello" from the Meshtastic app. Rin's radio wraps it in a Meshtastic packet and transmits.
+2. Dev's radio is listening on the same settings, so it **does** demodulate the LoRa signal. The bits arrive.
+3. Dev's MeshCore firmware tries to read those bits as a MeshCore packet. The header and layout do not
+   match its format, so it drops them. Nothing appears in Dev's app. <Cite ids="LW-C02" />
+
+Matching radio settings let the signal through. Matching protocols are needed for the message to get through.
+
+<LayerStack />
+
+A special application-level gateway that understood both formats would be a separate system. The core
+labs don't assume one exists.
+
+## Why it works without the internet
+
+Every hop in the trace was local: phone to its own radio, then radio to radio over the air. No tower,
+router or server took part. That gives you a quick way to work out what still works when services fail:
+
+| What fails | Does the message still get through? |
+|---|---|
+| Internet is down | Yes, if the radios are in range with matching settings and protocol. |
+| Cellular network is down | Yes, for the same reason. |
+| Your phone's battery dies | You can't type or read, but your radio can still relay other people's packets if its role allows it. <Cite ids="MT-C07 MC-005" /> |
+| The radios are out of range of each other, with no relay between | No. Some radio has to hear each transmission. |
+| You turned on an internet bridge such as MQTT | That bridge stops working, but the radio path doesn't depend on it. Bridges are optional, separate data paths with their own privacy questions. <Cite ids="MT-C22" /> |
+
+Off-grid mesh is a **supplementary** way to communicate. Delivery varies with terrain, antennas, settings and
+traffic, and later lessons show how to measure it rather than assume it.
+
+## Predict before you check
+
+Without scrolling to the answers: Dev changes the MeshCore radio's frequency so it no longer matches Rin's.
+Rin sends "hello" again. At which layer does it fail now, and is that a different failure from the worked
+example?
+
+<details>
+<summary>Answer</summary>
+
+It now fails one layer lower. With mismatched radio settings, Dev's radio never demodulates the signal at all,
+so nothing reaches the protocol layer. In the worked example the bits *did* arrive and were rejected by
+the protocol. Both look the same to Dev ("no message"), which is why later troubleshooting lessons check
+the layers in order, from the bottom up.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. Rin and Dev both run Meshtastic now, with matching settings. Rin's phone has no cell signal. Can Rin's message reach Dev?</summary>
+
+Yes, if the radios are in range or connected by relays. The phone only needs its local BLE link to its own
+radio, and the radios talk to each other directly over LoRa. Cell signal plays no part.
+</details>
+
+<details>
+<summary>2. Is "LoRa" the same thing as "LoRaWAN"?</summary>
+
+No. LoRa is the modulation, the physical layer. LoRaWAN is a network specification built on LoRa, with
+gateways and a network server, usually reached over the internet. Meshtastic and MeshCore also use LoRa,
+but neither is LoRaWAN. <Cite ids="LW-C01" />
+</details>
+
+<details>
+<summary>3. A friend says: "My radio picked up a signal from a MeshCore node, so my Meshtastic app should show its messages." What is wrong?</summary>
+
+Hearing a signal only proves the bottom layers matched. Showing a message needs the same mesh protocol,
+because each system defines its own packet format. <Cite ids="LW-C02" />
+</details>
+
+## Choose your learning path
+
+All three paths use the same lessons. The difference is what you do in the optional exercises.
+
+- **No hardware.** Every required lesson and lab works in the browser with simulations and sample data. Start
+  with [Module 01](../01-rf-foundations/) and try the [routing playground](../../labs/routing-playground/).
+- **Two radios.** The same lessons plus optional exercises with two of your own nodes. Read
+  [Module 02](../02-hardware-first-boot/) before buying or powering anything; it covers band, antenna and
+  rule checks first.
+- **Operator.** For people planning a small neighborhood network. Modules on reliability, security and rules,
+  field tests and deployment are planned; the [course outline](../../curriculum/) shows what is available now.
+
+<details>
+<summary>Engineering detail: where the layers live in each project</summary>
+
+- Meshtastic describes its packets with Protocol Buffers; the selected firmware pins a specific protobuf schema
+  commit. <Cite ids="MT-S04" />
+- MeshCore documents its over-the-air header, optional transport codes and path encoding separately from the
+  *companion protocol* that its phone and computer apps use over BLE or USB. <Cite ids="MC-S08 MC-S15" />
+- In both systems a node's *role* decides whether it relays for others, independently of whether a phone is
+  connected. <Cite ids="MT-C07 MC-005" />
+- How this course labels what it tells you: a **teaching model** is a deliberate simplification, like the trace
+  above; a **design assumption** is an example value; a **documented or measured fact** cites a source with
+  its version and date.
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="LW-C01 LW-C02 LW-C03 MT-C07 MT-C08 MC-005 MC-018 MT-C22" />
+- [Baselines and compatibility](../../reference/baselines/) for the exact firmware versions behind these claims.
+
+## Next
+
+[Module 01: RF and LoRa foundations](../01-rf-foundations/). Frequency, decibels, link budgets and what makes
+a packet take longer to send.
+
+<ProgressToggle page="modules/00-start-here" />

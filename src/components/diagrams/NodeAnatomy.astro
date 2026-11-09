@@ -1,0 +1,83 @@
+---
+// Block diagram of a typical LoRa mesh node; parts named generically.
+const blocks = [
+  { id: 'ant', x: 8, y: 20, w: 96, label: 'Antenna', sub: 'band-matched' },
+  { id: 'rf', x: 132, y: 20, w: 96, label: 'Transceiver', sub: 'LoRa radio chip' },
+  { id: 'mcu', x: 256, y: 20, w: 96, label: 'Microcontroller', sub: 'runs firmware' },
+  { id: 'pwr', x: 132, y: 128, w: 96, label: 'Power', sub: 'USB 5 V / battery' },
+  { id: 'phone', x: 256, y: 128, w: 96, label: 'Phone or PC', sub: 'BLE or USB' },
+  { id: 'gps', x: 8, y: 128, w: 96, label: 'GPS', sub: 'optional', dashed: true },
+];
+---
+
+<figure class="diagram not-content">
+  <svg viewBox="0 0 360 200" role="img" aria-labelledby="na-title na-desc">
+    <title id="na-title">Parts of a mesh radio node</title>
+    <desc id="na-desc">
+      The antenna connects to the LoRa transceiver through a connector. The transceiver connects to the
+      microcontroller, which runs the firmware. The microcontroller talks to a phone or computer over
+      Bluetooth Low Energy or USB. A power block (USB 5 volts or a battery) feeds the board. An optional GPS
+      connects to the microcontroller.
+    </desc>
+    <line x1="104" y1="48" x2="132" y2="48" class="wire rf" />
+    <text x="118" y="40" text-anchor="middle" class="tiny">connector</text>
+    <line x1="228" y1="48" x2="256" y2="48" class="wire" />
+    <line x1="304" y1="76" x2="304" y2="128" class="wire" />
+    <line x1="180" y1="128" x2="180" y2="76" class="wire pwr" />
+    <line x1="56" y1="128" x2="56" y2="100" class="wire dashed" />
+    <line x1="56" y1="100" x2="270" y2="100" class="wire dashed" />
+    <line x1="270" y1="100" x2="270" y2="76" class="wire dashed" />
+    {blocks.map((b) => (
+      <g>
+        <rect x={b.x} y={b.y} width={b.w} height="56" rx="3" class:list={['blk', { dashed: b.dashed }]} />
+        <text x={b.x + b.w / 2} y={b.y + 24} text-anchor="middle">{b.label}</text>
+        <text x={b.x + b.w / 2} y={b.y + 42} text-anchor="middle" class="tiny">{b.sub}</text>
+      </g>
+    ))}
+  </svg>
+  <figcaption>Every node has these parts. Board datasheets name the exact chips and connectors.</figcaption>
+  <ul>
+    <li><strong>Antenna:</strong> must match the radio's frequency band, and must be attached before the radio transmits.</li>
+    <li><strong>Connector:</strong> joins antenna and board, often a small U.FL/IPEX socket. Some devices use only internal antennas.</li>
+    <li><strong>Transceiver:</strong> the LoRa radio chip (for example SX1262 or LR1110) that modulates and demodulates the signal.</li>
+    <li><strong>Microcontroller:</strong> runs the mesh firmware (for example ESP32-S3 or nRF52840).</li>
+    <li><strong>Phone or PC link:</strong> Bluetooth Low Energy or USB to the app. This link is local only.</li>
+    <li><strong>Power:</strong> USB 5 V or a correctly specified battery, with the board's connector polarity.</li>
+    <li><strong>GPS (optional):</strong> some boards include one; it uses extra power and can reveal location.</li>
+  </ul>
+</figure>
+
+<style>
+  svg {
+    width: 100%;
+    max-width: 30rem;
+    height: auto;
+    display: block;
+    font-family: var(--__sl-font);
+  }
+  text {
+    fill: var(--sl-color-gray-1);
+    font-size: 12px;
+  }
+  .tiny {
+    font-size: 10px;
+    fill: var(--sl-color-gray-3);
+  }
+  .blk {
+    fill: var(--sl-color-gray-6);
+    stroke: var(--sl-color-gray-3);
+  }
+  .blk.dashed,
+  .wire.dashed {
+    stroke-dasharray: 5 4;
+  }
+  .wire {
+    stroke: var(--sl-color-gray-2);
+    stroke-width: 2;
+    fill: none;
+  }
+  .wire.rf {
+    stroke: var(--sl-color-accent);
+    stroke-width: 3;
+  }
+</style>

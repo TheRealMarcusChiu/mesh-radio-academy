@@ -1,0 +1,247 @@
+---
+title: 'Module 02: Hardware and first boot'
+description: The parts of a mesh node, three documented candidate boards, two- and three-node kits with a no-hardware alternative, safe first power-up, and a recovery decision tree.
+lesson:
+  module: '02'
+  outcomes:
+    - Identify the microcontroller, transceiver, antenna and connector, power input and optional GPS on a node.
+    - Check band, board revision, firmware target, roles, voltage and client support before choosing hardware.
+    - Compare an ESP32 board, a low-power nRF52 board and an enclosed device using only documented evidence.
+    - Power up a node safely, with the correct antenna attached first, without erasing anything.
+    - Use the first-link checkpoint sequence and the recovery decision tree, and spot the steps that erase data.
+  estimatedMinutes: 35
+  prerequisites: ['modules/00-start-here', 'modules/01-rf-foundations']
+  difficulty: beginner
+  sourceIds: [HW-C01, HW-C02, HW-C03, HW-C04, HW-C05, HW-C06, HW-C07, HW-C08, HW-C09, HW-C11, HW-C12, REG-C01, REG-C02, REG-C06, LW-C02, MT-C15, MC-024]
+  baseline: 'Meshtastic 2.7.26.54e0d8d Beta and MeshCore 1.18.0 build targets; manufacturer docs checked 2026-11-09'
+  reviewed: 2026-11-09
+---
+
+import NodeAnatomy from '../../../components/diagrams/NodeAnatomy.astro';
+import Cite from '../../../components/Cite.astro';
+import ProgressToggle from '../../../components/ProgressToggle.astro';
+
+You don't need hardware to finish this course. This module is for the moment you consider buying it. Its
+rule is simple: **check the evidence before you buy, and check the antenna before you power on.** Nothing
+here has been physically tested for this course; every row says what kind of evidence backs it.
+
+## What is inside a node
+
+<NodeAnatomy />
+
+## Check before you choose
+
+For any board, confirm all of these from the manufacturer and the firmware project, not from a shop listing:
+
+1. **Band and regional variant.** The radio and the antenna must both match your region's band; in the US,
+   902–928 MHz. Some boards come in separate high-band and low-band versions.
+2. **Exact model and revision.** Revisions can differ in power circuits and pins. Write down what the label says.
+3. **Firmware target at the course baseline.** A build target must exist for that board in the exact
+   firmware version you plan to run. <Cite ids="HW-C11 HW-C04" />
+4. **Roles you need.** Can it run as an ordinary client, or as a dedicated repeater?
+5. **Client support.** Which app connects to it, over which link (BLE, USB, Wi-Fi), in which versions.
+6. **Power.** Input voltage, battery chemistry, connector type and polarity.
+7. **Antenna.** Is a band-correct antenna included? Where does it connect?
+
+## Three documented candidates
+
+These boards were chosen because manufacturer documentation and build targets exist for **both** firmware
+tracks. That makes them candidates, not recommendations: no unit was bought, flashed or tested, and no FCC
+grant was retrieved for any of them. <Cite ids="REG-C06" />
+
+| | Heltec WiFi LoRa 32 V3.2 (HF) | RAK4631(H) + RAK19007 base | Seeed SenseCAP T1000-E |
+|---|---|---|---|
+| **Type** | ESP32 development board | Low-power nRF52 module on a base board | Enclosed card-sized tracker |
+| **Chips** | ESP32-S3 + SX1262 <Cite ids="HW-C01" /> | nRF52840 + SX1262 <Cite ids="HW-C03" /> | nRF52840 + LR1110 <Cite ids="HW-C05" /> |
+| **Band** | HF variant 863–928 MHz; pick the 915 MHz option for the US | "H" (high-band) module; "L" is a different product | US listed as 902–928 MHz; exact US retail SKU unconfirmed |
+| **Meshtastic 2.7.26 target** | `heltec-v3` <Cite ids="HW-C11" /> | `rak4631` <Cite ids="HW-C11" /> | `tracker-t1000-e` (built without Wi-Fi) <Cite ids="HW-C11" /> |
+| **MeshCore 1.18.0 targets** | BLE, USB and Wi-Fi companion; repeater; room server <Cite ids="HW-C04" /> | BLE and USB companion; repeater; room server <Cite ids="HW-C04" /> | BLE and USB companion; repeater; room server <Cite ids="HW-C04" /> |
+| **Links to phone or PC** | USB-C, BLE; Wi-Fi hardware | USB-C via base, BLE; no Wi-Fi | Magnetic USB cable, BLE |
+| **Antenna** | External LoRa antenna on a U.FL/IPEX socket; not established as included | Separate LoRa and BLE antennas on IPEX sockets; contents vary by kit | Internal antennas |
+| **Power** | USB 5 V nominal (4.7–6 V, ≥ 500 mA); single-cell lithium 3.3–4.2 V on SH1.25-2 <Cite ids="HW-C02" /> | USB 5 V; 3.7 V Li-ion (4.2 V charge, 4.3 V absolute ceiling) on JST PHR-2; solar input ≤ 5.5 V <Cite ids="HW-C09" /> | 700 mAh built in; input 4.7–5.5 V; charge only at 0–45 °C <Cite ids="HW-C05" /> |
+| **Enclosure** | Bare board | Bare board | IP65 case |
+| **Recovery entry** | Hold PRG, tap RST, release PRG | Double-tap reset for the UF2 drive | Hold the button, connect the magnetic cable twice quickly <Cite ids="HW-C12" /> |
+| **Watch out for** | The V3.2 PDF's revision history disagrees with its footer; don't use V4 power or solar specs | RAK4631-R ships a different bootloader and needs a documented conversion first | Only the exact T1000-E image; the manufacturer says **do not use NRF-OTA** <Cite ids="HW-C06" /> |
+
+Manufacturer procedures: [Heltec quick start](https://docs.heltec.org/en/node/esp32/esp32_general_docs/quick_start.html),
+[RAK4631 quick start](https://docs.rakwireless.com/product-categories/wisblock/rak4631/quickstart/),
+[Seeed T1000-E for Meshtastic](https://wiki.seeedstudio.com/sensecap_t1000_e/),
+[Seeed T1000-E for MeshCore](https://wiki.seeedstudio.com/sensecap_t1000_e_meshcore/).
+
+## Kits: two radios, three radios, or none
+
+**Two-node starter.** Two identical RAK4631(H) + RAK19007 assemblies, each with matching band antennas, a
+USB **data** cable and an ordinary 5 V USB supply. Batteries and non-conductive cases are optional. Run both
+as Meshtastic `CLIENT`, then reflash both as MeshCore BLE companions for a second run. Identical hardware
+means differences you see come from the software, not the boards. <Cite ids="HW-C07" />
+
+**Three-node relay.** Add a third identical assembly. On Meshtastic, all three can be `CLIENT`; the middle
+one forwards. The `REPEATER` role is deprecated, so the course doesn't use it. <Cite ids="HW-C08" /> On MeshCore,
+use two companions plus one dedicated `RAK_4631_repeater` image: companion and repeater are different builds.
+A line on paper doesn't force a real route, so the end nodes must genuinely be unable to hear each other.
+Don't fake that by detuning or removing antennas.
+
+**No hardware.** Use the simulated send in [Module 00](../00-start-here/) and the
+[routing playground](../../labs/routing-playground/). The playground's two-protocol diamond covers what the
+three-node kit teaches about relaying, and it is labelled as a simulation, never as captured traffic.
+
+These kits are **documentation-checked candidates**. Before you call one "known good", record the actual PCB
+revisions, bootloaders, firmware files and app versions you used.
+
+## Rules before radio
+
+Owning a radio does not settle whether a particular firmware, power setting and antenna are allowed. In the
+US, unlicensed devices operate under Part 15: you get no protected frequency and must not cause harmful
+interference. <Cite ids="REG-C01" /> Swapping antennas can change what is authorized, so matching connectors
+are not enough. <Cite ids="REG-C02" />
+
+Before transmitting, find the FCC ID on the device or module label and look it up in the FCC Equipment
+Authorization database, noting frequency range, power and antenna conditions. This course has **not** done
+that for any board above. Outside the US, start with your own national regulator. A later module covers the
+rules in depth.
+
+## Safe first power-up
+
+These steps don't erase anything. Do them in order.
+
+1. **Attach the correct band antenna before applying power.** RAK warns explicitly against powering the
+   transceiver without its antennas. <Cite ids="HW-C09" />
+2. **Use a USB data cable and an ordinary 5 V supply.** Charge-only cables can't show a serial port or
+   drive. Seeed advises a normal USB supply rather than a fast charger for the T1000-E. <Cite ids="HW-S07" />
+3. **If you fit a battery, check the board's polarity drawing,** not wire colors or whether the plug fits.
+4. **Write down the label**: model, revision, band and any FCC ID. Keep it private if it identifies you.
+5. **Don't flash yet.** First back up whatever settings the current firmware lets you export, and keep
+   that backup out of public places. Exports can contain keys.
+6. **Find, but don't use, your board's recovery entry** (table above) so you know it before you need it.
+7. **Change default passwords** on any dedicated MeshCore repeater or room server before deployment;
+   the build files ship with `password`. <Cite ids="MC-024" />
+
+## The first-link checkpoint sequence
+
+Modules 03 (Meshtastic) and 05 (MeshCore) will follow this same order step by step:
+
+1. Confirm the hardware model and band.
+2. Attach the matching antenna.
+3. Back up supported settings privately.
+4. Choose the exact firmware file for your board target and role.
+5. Verify the installed version on the device.
+6. Set the region and RF parameters.
+7. Connect a compatible client.
+8. Send one short local message.
+9. Observe it on the recipient.
+10. Save a sanitized test record (no keys, no precise locations).
+
+## Recovery decision tree
+
+Work from the first symptom that matches. **Erase steps are marked. They destroy settings and identity
+keys, so back up first.** <Cite ids="HW-C12" />
+
+<details>
+<summary>The device powers on but the computer sees no serial port or drive</summary>
+
+1. Swap to a known **data** USB cable and another port; check the supply.
+2. Close other apps that may hold the port.
+3. Enter the board's bootloader with the manufacturer's procedure: Heltec PRG/RST, RAK double-tap, T1000-E
+   button plus cable sequence. On RAK and T1000-E a USB drive should appear; check its info file.
+4. Only now consider reflashing with the exact image for your board.
+   **⚠ Erase warning:** "full erase" or "factory reset" options destroy settings and keys. Don't treat erase as
+   a first diagnostic. The MeshCore flasher itself warns that erase destroys the device identity. <Cite ids="HW-C12" />
+</details>
+
+<details>
+<summary>The firmware boots but without the role you expected</summary>
+
+1. Check the installed **version and build target** on the device itself, not only what the phone app shows.
+2. Meshtastic roles are settings on one image; check the role setting. MeshCore companion, repeater and room
+   server are **different images**: a companion image can't become a dedicated repeater by changing a
+   setting. <Cite ids="HW-C04 HW-C11" />
+3. Reflash the correct image only after backing up.
+</details>
+
+<details>
+<summary>The phone won't pair after flashing</summary>
+
+1. Forget or remove the device in the phone's Bluetooth settings, then pair again. An old pairing can
+   linger after reflashing, and Seeed's MeshCore guide calls for re-pairing. <Cite ids="HW-S08" />
+2. Confirm your app version is documented for the firmware version ([baselines](../../reference/baselines/)).
+3. Try USB if your board and app support it, to separate a BLE problem from a firmware problem.
+</details>
+
+<details>
+<summary>Two nodes still can't exchange messages</summary>
+
+Check from the bottom layer up, one change at a time:
+
+1. Same **protocol** on both? Meshtastic and MeshCore don't exchange native messages. <Cite ids="LW-C02" />
+2. Same **region, frequency and modem settings**? <Cite ids="MT-C15" />
+3. Same **channel and key**, or for a direct message, does each side know the other as a contact?
+4. Does each node's **role** allow what you expect?
+
+Modules 03 and 05 turn each of these into a controlled mismatch drill.
+</details>
+
+## Task: choose a kit on paper
+
+A learner wants to compare Meshtastic and MeshCore fairly, with the fewest variables. Using only the table,
+which two-node kit would you pick, and which three things must they check at purchase that the table can't
+confirm?
+
+<details>
+<summary>Suggested answer</summary>
+
+Two identical RAK4631(H) + RAK19007 assemblies: same chips on both tracks, BLE and USB on both, and a
+dedicated repeater target if they later add a third node. At purchase they must confirm: (1) the module is
+the H band variant with US915 antennas, (2) the actual PCB revision and that it is not the RAK4631-R
+bootloader variant (or plan its conversion), and (3) what antennas and cables the kit really includes.
+Neither the FCC grant conditions nor any app pairing is confirmed by this course.
+</details>
+
+## Knowledge check
+
+<details>
+<summary>1. You plug in a new Heltec board with no antenna "just to see the screen". What is the risk, and what should you do first?</summary>
+
+If the firmware transmits, an unterminated transmitter wastes power and can be damaged. Attach the correct
+band antenna before powering any LoRa radio. <Cite ids="HW-C09" />
+</details>
+
+<details>
+<summary>2. A shop lists a "T1000" tracker. Can you use the T1000-E instructions and image?</summary>
+
+Not without confirming it is exactly a **T1000-E**. T1000-A, -B and -S are different products, and the
+manufacturer says to use only the exact image. <Cite ids="HW-C05 HW-C06" />
+</details>
+
+<details>
+<summary>3. Your MeshCore companion node won't forward other people's packets. Is that a fault?</summary>
+
+Not necessarily. Companions have repeating off by default; dedicated repeater images are built for
+forwarding. Check the image and its settings before assuming a fault. <Cite ids="MC-004" />
+</details>
+
+<details>
+<summary>Engineering detail: what a "build target" does and doesn't prove</summary>
+
+- A target is an entry in the firmware's build configuration (`platformio.ini`). At Meshtastic `54e0d8d` the
+  three targets are marked actively supported at support level 1; the T1000-E entry sets
+  `MESHTASTIC_EXCLUDE_WIFI=1`. <Cite ids="HW-S14" />
+- At MeshCore `81dbae5`, each board has separate environments for companion (BLE, USB, sometimes Wi-Fi),
+  repeater and room server. <Cite ids="HW-S10" />
+- A target proves someone configured a build for a board family. It doesn't prove every silent hardware
+  revision, retail bundle, supplied antenna or app combination works.
+- Heltec's V3.2 PDF cover says V3.2 while its revision history and footer disagree. The course keeps that
+  inconsistency visible rather than guessing. <Cite ids="HW-C01" />
+</details>
+
+## References
+
+- Claims used on this page: <Cite ids="HW-C01 HW-C02 HW-C03 HW-C04 HW-C05 HW-C06 HW-C07 HW-C08 HW-C09 HW-C11 HW-C12 REG-C01 REG-C02 REG-C06 LW-C02 MT-C15 MC-004 MC-024" />
+- Sources: <Cite ids="HW-S01 HW-S02 HW-S03 HW-S04 HW-S05 HW-S06 HW-S07 HW-S08 HW-S10 HW-S14 REG-S07" />
+
+## Next
+
+Modules 03 (your first Meshtastic link) and 05 (your first MeshCore link) are being written. Meanwhile,
+compare both forwarding schemes in the [routing playground](../../labs/routing-playground/), or see the
+[course outline](../../curriculum/).
+
+<ProgressToggle page="modules/02-hardware-first-boot" />

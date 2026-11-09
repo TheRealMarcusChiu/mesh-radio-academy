@@ -1,0 +1,64 @@
+---
+title: Routing playground
+description: Step through Meshtastic managed flooding and MeshCore known-path forwarding on the same four-node graph, with every decision explained and cited.
+---
+
+import RoutingPlayground from '../../../components/RoutingPlayground.astro';
+import Cite from '../../../components/Cite.astro';
+
+This lab puts two forwarding schemes on one small graph: A can hear B and C, B and C can hear D, and A cannot
+hear D directly. Choose a protocol, send, then step through what each node hears and decides. The model
+follows the course's pinned firmware versions, Meshtastic 2.7.26 and MeshCore 1.18.0, for the behaviors
+listed below and leaves out real timing and collisions. <Cite ids="MT-F01 MC-F04" />
+
+<RoutingPlayground />
+
+## Experiment 1: Meshtastic, does a relay wait for the other?
+
+- **Setup.** Meshtastic, all defaults: B and C hear each other, B–D works, seed 3, B and C are `CLIENT`.
+  A sends a channel broadcast with hop limit 1. D is just the node we watch; a broadcast has no single address.
+- **Change one thing.** Untick "B and C can hear each other".
+- **Expect.** With B–C audible, only A and B transmit: C hears B's copy before its own turn and cancels
+  its relay. Without B–C, C never hears B, so A, B and C all transmit. Either way D shows the message once and
+  doesn't relay it, because its copy arrives with hop limit 0. <Cite ids="MT-C03 MT-C04 MT-C08" />
+- **If you see something else.** Check the tie-order seed. With seed 1, C goes first and B is the one that
+  cancels. Setting C to `ROUTER` also changes the result: routers relay in an earlier window and never cancel
+  on an overheard copy. <Cite ids="MT-C05 MT-C06" />
+
+## Experiment 2: Meshtastic, no eligible relay
+
+- **Setup.** As above.
+- **Change one thing.** Set both B and C to `CLIENT_MUTE`.
+- **Expect.** Only A transmits. B and C show the message but never relay it, and D receives nothing.
+  <Cite ids="MT-C07" />
+- **If you see something else.** If D still receives, one middle node is still a relaying role.
+
+## Experiment 3: MeshCore, a stored path breaks
+
+- **Setup.** MeshCore. A already stores the path [b2] to D, and D independently stores [b2] back to A.
+  A and D are companions with repeat off; B and C are repeaters. B–D is broken.
+- **Change one thing.** Press "Send message A → D".
+- **Expect.** A sends direct on [b2]. B forwards it, but D cannot hear B. C hears A's packet and does **not**
+  forward it, because it isn't the named next relay, even though C could reach D. A gets no confirmation,
+  and from A's side that doesn't reveal which hop failed. <Cite ids="MC-009 MC-011 MC-030" />
+- **Then.** Press "Reset A's path to D". This only clears A's stored path; nothing is transmitted.
+  <Cite ids="MC-012" /> Send again: with no stored path the message floods, B and C both repeat it, and D
+  receives C's copy. D floods back a PATH carrying [c3] plus the ACK. A stores [c3] and replies with a direct
+  path telling D its own route back. A third send goes direct via C and is confirmed. <Cite ids="MC-008" />
+- **If you see something else.** If C is set to "Companion (repeat off)", the recovery flood has no eligible
+  relay to D and A again gets no confirmation. <Cite ids="MC-004" /> If B–D is ticked as working, the first
+  send succeeds through B.
+
+## How to read the counts
+
+- **Radio transmissions:** every packet put on the air, including relays and control packets.
+- **New packets sent by their origin:** first transmissions of a message, PATH or ACK.
+- **Relay transmissions:** forwards by a node that didn't originate the packet.
+- **Control transmissions:** MeshCore PATH and ACK packets, a subset of radio transmissions.
+- **Unique app deliveries:** how many times some node's app showed a message for the first time.
+- **Retries:** an origin resending the same packet. Always 0 here; resending after a reset is a *new* message.
+- **ACKs matched** and **sends with no confirmation** count protocol receipts at the sender, which is not
+  the same as a person reading the message.
+
+The model computes no airtime. Arbitrary message bytes aren't real packet sizes, so airtime is left out
+until packet layouts are pinned (see [Module 01](../../modules/01-rf-foundations/) for airtime itself).
