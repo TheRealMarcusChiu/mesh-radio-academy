@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { CHANGES, STAGES, diagnose, type Diagnosis } from '../src/lib/mismatch.ts';
 
 const at = (d: Diagnosis, stage: string) => d.stages.find((s) => s.stage === stage)!.outcome;
@@ -121,6 +122,50 @@ test('Meshtastic primary-channel rename: a PKI DM depends on the slot, not on th
   assert.ok(dec.claims.includes('MT-C18') && dec.claims.includes('RT-X10'));
   const ch = diagnose({ protocol: 'meshtastic', traffic: 'channel', change: 'rf-frequency' });
   assert.match(ch.stages.find((s) => s.stage === 'decrypt')!.why, /channel hash D tries/);
+});
+
+test('Q-RI-01: MeshCore channel copy never promises delivery, recipient ACKs or path-reset repair', () => {
+  const copy = (change: string) => diagnose({ protocol: 'meshcore', traffic: 'channel', change }).copy;
+  const base = copy('baseline');
+  assert.doesNotMatch(base.expected, /every stage passes/i);
+  assert.match(base.expected, /not simulated/i);
+  assert.match(base.expected, /no recipient ACK/i);
+  const stale = copy('stale-path');
+  assert.doesNotMatch(`${stale.setup} ${stale.expected}`, /explicit reset|stored route to D goes through/i);
+  assert.match(stale.expected, /no stored DM path or reset/i);
+  assert.match(stale.expected, /repeater forwarding and flood policy/i);
+  const e2e = copy('no-e2e');
+  assert.doesNotMatch(e2e.expected, /D shows the message|never gets the ACK/);
+  assert.match(e2e.expected, /not simulated/i);
+  assert.match(e2e.expected, /no recipient ACK/i);
+});
+
+test('Q-RI-01: copy is resolved per protocol and traffic; DM copy is preserved', () => {
+  const mcDm = diagnose({ protocol: 'meshcore', traffic: 'dm', change: 'stale-path' }).copy;
+  assert.match(mcDm.expected, /silent failure until an explicit reset/i);
+  assert.doesNotMatch(mcDm.expected, /Meshtastic/);
+  const mtDm = diagnose({ protocol: 'meshtastic', traffic: 'dm', change: 'stale-path' }).copy;
+  assert.match(mtDm.expected, /flood fallback through C/);
+  assert.equal(diagnose({ protocol: 'meshcore', traffic: 'dm', change: 'no-e2e' }).copy.expected, 'D shows the message; A never gets the ACK.');
+  assert.equal(diagnose({ protocol: 'meshcore', traffic: 'dm', change: 'baseline' }).copy.expected, CHANGES[0].expected);
+  for (const traffic of ['dm', 'channel'] as const) {
+    for (const protocol of ['meshtastic', 'meshcore'] as const) {
+      for (const c of CHANGES) {
+        const k = diagnose({ protocol, traffic, change: c.id }).copy;
+        assert.ok(k.setup && k.change && k.expected, `${protocol} ${traffic} ${c.id}`);
+        if (traffic === 'channel') assert.doesNotMatch(k.expected, /A (never )?gets (no |the )?ACK|Meshtastic DM/, `${protocol} ${c.id}`);
+      }
+    }
+  }
+  assert.doesNotMatch(diagnose({ protocol: 'meshtastic', traffic: 'channel', change: 'baseline' }).copy.expected, /every stage passes/i);
+});
+
+test('Q-RI-01: the bench renders resolved copy in both views and qualifies its introduction', () => {
+  const src = readFileSync('src/components/MismatchBench.astro', 'utf8');
+  assert.doesNotMatch(src, /\{c\.(setup|change|expected)\}/, 'raw shared copy must not be rendered');
+  for (const f of ['setup', 'change', 'expected']) assert.match(src, new RegExp(`\\{d\\.copy\\.${f}\\}`));
+  assert.match(src, /\.copy\.expected\}<\/td>/, 'static matrices show the resolved expectation');
+  assert.match(src, /group-flood reach is not simulated/i);
 });
 
 test('diagnose validates its input', () => {

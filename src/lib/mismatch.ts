@@ -43,6 +43,8 @@ export interface Diagnosis {
   senderSees: string;
   /** Why this result differs from the baseline. */
   explain: string;
+  /** Setup / change / expected text resolved for this protocol and traffic (Q-RI-01). */
+  copy: { setup: string; change: string; expected: string };
 }
 
 export const CHANGES = [
@@ -56,6 +58,32 @@ export const CHANGES = [
   { id: 'no-e2e', label: 'Heard, but no end-to-end confirmation', setup: 'Line, but D can no longer be heard by B (one-way link).', change: 'D → B direction fails.', expected: 'D shows the message; A never gets the ACK.' },
 ] as const;
 export type ChangeId = (typeof CHANGES)[number]['id'];
+
+const GROUP_NOT_SIMULATED = 'Whether a MeshCore group post reaches D depends on repeater forwarding and flood policy, and is not simulated here; there is no recipient ACK.';
+const NO_CHANNEL_ACK = 'A channel post has no recipient ACK.';
+
+/** Copy that differs from the shared CHANGES text, keyed `change:protocol:traffic` (`*` = any). */
+const COPY: Record<string, Partial<Diagnosis['copy']>> = {
+  'baseline:meshtastic:channel': { expected: `Every stage up to D’s app passes in this lossless model. ${NO_CHANNEL_ACK} Real radios can still lose packets.` },
+  'baseline:meshcore:channel': { expected: `Nothing is broken, but this bench does not predict the result: ${GROUP_NOT_SIMULATED}` },
+  'rf-frequency:meshtastic:dm': { expected: 'The frequency slot may move; hash collisions mean it can stay. If the DM still arrives, peer keys decrypt it: the channel name plays no other part.' },
+  'rf-frequency:meshtastic:channel': { expected: 'The frequency slot may move (hash collisions mean it can stay), and the renamed channel’s hash may no longer match.' },
+  'rf-frequency:meshcore:*': { expected: 'D is off A’s frequency, so the frame does not decode.' },
+  'missing-repeater:*:channel': { expected: `D hears nothing. ${NO_CHANNEL_ACK}` },
+  'stale-path:meshtastic:dm': { change: 'The A–B link fails after A saved B as its next hop toward D.', expected: 'Retries, then a flood fallback through C.' },
+  'stale-path:meshcore:dm': { change: 'The B–D link fails after A stored the path [b2].', expected: 'Silent failure until an explicit reset.' },
+  'stale-path:meshtastic:channel': { setup: 'Diamond: A’s link to B fails; C still hears A and D.', change: 'The A–B link fails.', expected: `A channel broadcast uses no stored route or next hop, so the managed flood still reaches D through C. ${NO_CHANNEL_ACK}` },
+  'stale-path:meshcore:channel': { setup: 'Diamond: B can no longer reach D; C still could.', change: 'The B–D link fails.', expected: `A group post names a channel, not a destination, so no stored DM path or reset is involved. ${GROUP_NOT_SIMULATED}` },
+  'no-e2e:meshtastic:channel': { expected: `D shows the message. ${NO_CHANNEL_ACK} So A sees no difference from the baseline.` },
+  'no-e2e:meshcore:channel': { expected: `The forward direction still works. ${GROUP_NOT_SIMULATED}` },
+};
+
+function copyFor(change: ChangeId, protocol: BenchProtocol, traffic: Traffic): Diagnosis['copy'] {
+  const def = CHANGES.find((c) => c.id === change)!;
+  const pick = (...keys: string[]) => Object.assign({}, ...keys.map((k) => COPY[k]));
+  const o = pick(`${change}:*:*`, `${change}:*:${traffic}`, `${change}:${protocol}:*`, `${change}:${protocol}:${traffic}`);
+  return { setup: o.setup ?? def.setup, change: o.change ?? def.change, expected: o.expected ?? def.expected };
+}
 
 const r = (stage: Stage, outcome: Outcome, why: string, claims: string[]): StageResult => ({ stage, outcome, why, claims });
 const NA = (stage: Stage, why: string) => r(stage, 'n/a', why, ['LW-C03']);
@@ -117,7 +145,7 @@ export function diagnose(input: unknown): Diagnosis {
   const mt = protocol === 'meshtastic';
   const dm = traffic === 'dm';
   const mcChannel = !mt && !dm;
-  const done = (stages: StageResult[], senderSees: string, explain: string): Diagnosis => ({ protocol, traffic, change, stages, senderSees, explain });
+  const done = (stages: StageResult[], senderSees: string, explain: string): Diagnosis => ({ protocol, traffic, change, stages, senderSees, explain, copy: copyFor(change, protocol, traffic) });
   const noAck = r('ack', 'n/a', 'A channel post names a channel, not a recipient, so no end-to-end ACK comes back.', mt ? ['MT-C14'] : ['RT-X07']);
 
   // ---- RF and protocol layer: sourced rules, no routing needed ----

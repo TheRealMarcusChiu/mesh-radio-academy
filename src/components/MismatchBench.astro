@@ -13,7 +13,10 @@ const combos = PROTOCOLS.flatMap(([p, pl]) => TRAFFIC.map(([t, tl]) => ({ p, t, 
   <p class="mb-note">
     Start from a working A → B → D setup and change exactly one thing. Each stage is judged separately:
     hearing a signal, decoding the LoRa frame, parsing the native protocol, decrypting, showing it in D’s
-    app, and A receiving an ACK. Routing outcomes come from the same model as the routing playground.
+    app, and A receiving an ACK. Routing outcomes for DMs and Meshtastic channel broadcasts come from the
+    same model as the routing playground. MeshCore channel posts are the exception:
+    their group-flood reach is not simulated, so those results say “not established”, and channel posts
+    have no recipient ACK.
   </p>
 
   <div class="mb-ui" data-ui hidden>
@@ -39,9 +42,9 @@ const combos = PROTOCOLS.flatMap(([p, pl]) => TRAFFIC.map(([t, tl]) => ({ p, t, 
           <section class="mb-result" data-diag={`${p}:${t}:${c.id}`} hidden>
             <h3>{c.label}</h3>
             <dl>
-              <dt>Setup</dt><dd>{c.setup}</dd>
-              <dt>Change</dt><dd>{c.change}</dd>
-              <dt>Expect</dt><dd>{c.expected}</dd>
+              <dt>Setup</dt><dd>{d.copy.setup}</dd>
+              <dt>Change</dt><dd>{d.copy.change}</dd>
+              <dt>Expect</dt><dd>{d.copy.expected}</dd>
             </dl>
             <table>
               <caption>Stage by stage</caption>
@@ -71,15 +74,19 @@ const combos = PROTOCOLS.flatMap(([p, pl]) => TRAFFIC.map(([t, tl]) => ({ p, t, 
         <table>
           <caption>{label}</caption>
           <thead>
-            <tr><th scope="col">Change</th>{STAGES.map((s) => <th scope="col">{STAGE_LABELS[s]}</th>)}</tr>
+            <tr><th scope="col">Change</th>{STAGES.map((s) => <th scope="col">{STAGE_LABELS[s]}</th>)}<th scope="col">Expect</th></tr>
           </thead>
           <tbody>
-            {CHANGES.map((c) => (
-              <tr>
-                <th scope="row">{c.label}</th>
-                {diagnose({ protocol: p, traffic: t, change: c.id }).stages.map((s) => <td>{OUTCOME[s.outcome]}</td>)}
-              </tr>
-            ))}
+            {CHANGES.map((c) => {
+              const d = diagnose({ protocol: p, traffic: t, change: c.id });
+              return (
+                <tr>
+                  <th scope="row">{c.label}</th>
+                  {d.stages.map((s) => <td>{OUTCOME[s.outcome]}</td>)}
+                  <td>{d.copy.expected}</td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
