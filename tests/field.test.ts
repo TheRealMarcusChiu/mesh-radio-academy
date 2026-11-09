@@ -125,14 +125,43 @@ test('zero traffic gives zero transmit time; over-100% airtime is refused', () =
 
 test('sensitivity changes one assumption at a time from the same base', () => {
   const rows = sensitivity(FIELD_BATTERY_CORE, FIELD_F02_TRAFFIC);
-  const base = rows[0];
-  assert.match(base.label, /base/i);
-  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.runtimeHours]));
-  assert.ok(byKey.rx < base.runtimeHours, 'higher receive current shortens runtime');
-  assert.ok(byKey.gps < base.runtimeHours);
-  assert.ok(byKey.traffic < base.runtimeHours);
-  close(byKey.cold, base.runtimeHours * 0.8, 1e-9, 'assumed 20% cold derating');
+  assert.match(rows[0].label, /base/i);
+  assert.ok(rows.every((r) => r.runtimeHours !== null && !r.unavailable), 'all variants computed for in-range inputs');
+  const byKey = Object.fromEntries(rows.map((r) => [r.key, r.runtimeHours as number]));
+  const base = byKey.base;
+  assert.ok(byKey.rx < base, 'higher receive current shortens runtime');
+  assert.ok(byKey.gps < base);
+  assert.ok(byKey.traffic < base);
+  close(byKey.cold, base * 0.8, 1e-9, 'assumed 20% cold derating');
   for (const r of rows.slice(1)) assert.match(r.label, /assumed|synthetic/i);
+});
+
+test('FLD-SPEC-02: a valid near-boundary base keeps its result; out-of-range derived variants are unavailable, not thrown', () => {
+  const core = { ...FIELD_BATTERY_CORE, rxCurrentMa: 80_000 };
+  assert.deepEqual(validateBattery({ ...core, duty: dutyFromTraffic(FIELD_F02_TRAFFIC) }), []);
+  const rows = sensitivity(core, FIELD_F02_TRAFFIC);
+  const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+  assert.ok(by.base.runtimeHours! > 0, 'base result kept');
+  assert.equal(by.rx.runtimeHours, null);
+  assert.equal(by.rx.averageCurrentMa, null);
+  assert.match(by.rx.unavailable!, /120000 mA/);
+  assert.ok(by.cold.runtimeHours! > 0, 'unrelated variants still computed');
+
+  const busy = sensitivity(FIELD_BATTERY_CORE, { ...FIELD_F02_TRAFFIC, packetsPerHour: 40_000 });
+  const traffic = busy.find((r) => r.key === 'traffic')!;
+  assert.equal(traffic.runtimeHours, null, 'doubling past 100% airtime is shown as unavailable, not omitted');
+  assert.match(traffic.unavailable!, /100%/);
+
+  const gps = sensitivity({ ...FIELD_BATTERY_CORE, gpsCurrentMa: 30, gpsDutyFraction: 0.95 }, FIELD_F02_TRAFFIC).find((r) => r.key === 'gps')!;
+  assert.equal(gps.runtimeHours, null);
+  assert.match(gps.unavailable!, /100%/);
+  assert.equal(sensitivity(FIELD_BATTERY_CORE, FIELD_F02_TRAFFIC).length, 5, 'every variant has a row');
+});
+
+test('FLD-SPEC-02: report export still works with a near-boundary current', () => {
+  const r = exportReport({ ...SAMPLE_WORKSPACE, inputs: { ...SAMPLE_WORKSPACE.inputs, rxCurrentMa: '80000' } }, '2026-11-09T00:00:00Z');
+  assert.equal(r.status, 'final');
+  assert.ok(JSON.parse(r.json).battery.result.runtimeHours > 0);
 });
 
 test('channel share for a test cadence follows from airtime and spacing', () => {
@@ -346,6 +375,50 @@ test('unreadable or other-version data is never overwritten until explicitly dis
     assert.equal(st.discard(), true);
     assert.equal(st.save(SAMPLE_WORKSPACE), true);
   }
+});
+
+test('FLD-SPEC-01: structurally unsafe saved workspaces are refused, kept byte-for-byte and block autosave until discard', () => {
+  const p = SAMPLE_PLANNER;
+  const node = (id: string) => ({ ...p.nodes[0], id });
+  const unsafe: [string, unknown][] = [
+    ['zero nodes', { ...SAMPLE_WORKSPACE, planner: { nodes: [], links: [] } }],
+    ['two nodes', { ...SAMPLE_WORKSPACE, planner: { nodes: p.nodes.slice(0, 2), links: [p.links[0]] } }],
+    ['six nodes', { ...SAMPLE_WORKSPACE, planner: { nodes: [...p.nodes, node('F')], links: p.links } }],
+    ['out-of-order ids', { ...SAMPLE_WORKSPACE, planner: { nodes: [p.nodes[1], p.nodes[0], ...p.nodes.slice(2)], links: p.links } }],
+    ['dangling link', { ...SAMPLE_WORKSPACE, planner: { ...p, links: [...p.links.slice(1), { ...p.links[0], b: 'Z' }] } }],
+    ['self link', { ...SAMPLE_WORKSPACE, planner: { ...p, links: [{ ...p.links[0], b: 'A' }] } }],
+    ['duplicate link pair', { ...SAMPLE_WORKSPACE, planner: { ...p, links: [...p.links, { ...p.links[0], a: p.links[0].b, b: p.links[0].a }] } }],
+    ['missing input key', { ...SAMPLE_WORKSPACE, inputs: Object.fromEntries(Object.entries(SAMPLE_WORKSPACE.inputs).filter(([k]) => k !== 'rxCurrentMa')) }],
+    ['empty inputs', { ...SAMPLE_WORKSPACE, inputs: {} }],
+    ['non-string input', { ...SAMPLE_WORKSPACE, inputs: { ...SAMPLE_WORKSPACE.inputs, sf: 7 } }],
+  ];
+  for (const [name, data] of unsafe) {
+    assert.equal(validateWorkspace(data), false, name);
+    const raw = JSON.stringify({ version: 1, data });
+    const s = memStorage({ [FIELD_STORAGE_KEY]: raw });
+    const st = openFieldStore(() => s);
+    assert.equal(st.problem, 'corrupt', name);
+    assert.equal(st.initial, null, `${name}: falls back to defaults`);
+    assert.equal(st.save(SAMPLE_WORKSPACE), false, `${name}: autosave paused`);
+    assert.equal(s.data.get(FIELD_STORAGE_KEY), raw, `${name}: saved bytes untouched`);
+    assert.equal(st.discard(), true);
+    assert.equal(st.save(SAMPLE_WORKSPACE), true);
+  }
+});
+
+test('FLD-SPEC-01: unfinished but structurally safe drafts still reload', () => {
+  const draft = {
+    ...SAMPLE_WORKSPACE,
+    planner: { nodes: SAMPLE_PLANNER.nodes.slice(0, 3).map((n) => ({ ...n, label: '', antenna: '', heightM: null })), links: [] },
+    inputs: { ...SAMPLE_WORKSPACE.inputs, capacityMah: 'abc', rxCurrentMa: '' },
+    log: [],
+    capstone: { ...WORKED_CAPSTONE, failure: '', resultsKind: '' as const, privacyChecks: { ...WORKED_CAPSTONE.privacyChecks, rulesChecked: false } },
+  };
+  assert.equal(validateWorkspace(draft), true);
+  const s = memStorage({ [FIELD_STORAGE_KEY]: JSON.stringify({ version: 1, data: draft }) });
+  const st = openFieldStore(() => s);
+  assert.equal(st.problem, null);
+  assert.deepEqual(st.initial, draft);
 });
 
 test('a failing write switches to memory and reports it', () => {

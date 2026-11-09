@@ -29,6 +29,12 @@ test('lab page embeds the workbench, keeps citation groups short and states its 
   assert.match(page, /synthetic/i);
 });
 
+test('FLD-SPEC-02 UI guard: sensitivity rows render their unavailable reason instead of formatting null numbers', () => {
+  const c = read('src/components/FieldWorkbench.astro');
+  assert.doesNotMatch(c, /s\.averageCurrentMa\.toFixed|s\.runtimeHours\.toFixed/, 'no unguarded formatting of possibly-null values');
+  assert.ok((c.match(/\.unavailable/g) ?? []).length >= 2, 'both static and live tables show the reason');
+});
+
 test('workbench: progressive enhancement, base-aware downloads, no unsafe or tracking APIs, print styles', () => {
   const c = read('src/components/FieldWorkbench.astro');
   assert.match(c, /data-ui hidden/);

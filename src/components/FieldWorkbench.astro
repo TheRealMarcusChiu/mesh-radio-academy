@@ -87,8 +87,9 @@ const RUBRIC: [string, number, string][] = [
       <thead><tr><th scope="col">Case</th><th scope="col">Average current</th><th scope="col">Runtime</th></tr></thead>
       <tbody>
         <tr><th scope="row">Fixed duty: 1% transmit at 120 mA, 98% listen at 15 mA, 1% sleep at 0.1 mA; 2000 mAh, 3.7 V, 80% usable, 90% efficient</th><td>{f01.averageCurrentMa.toFixed(3)} mA</td><td>{h1(f01.runtimeHours)} h ({f01.runtimeDays.toFixed(2)} days)</td></tr>
-        {sens.map((s) => (
-          <tr><th scope="row">{s.label}; 60 Lab A packets/h of {packetMs.toFixed(3)} ms</th><td>{s.averageCurrentMa.toFixed(3)} mA</td><td>{h1(s.runtimeHours)} h</td></tr>
+        {sens.map((r) => (
+          <tr><th scope="row">{r.label}; 60 Lab A packets/h of {packetMs.toFixed(3)} ms</th>
+            {r.unavailable ? <td colspan="2">{r.unavailable}</td> : <><td>{r.averageCurrentMa!.toFixed(3)} mA</td><td>{h1(r.runtimeHours!)} h</td></>}</tr>
         ))}
       </tbody>
     </table>
@@ -509,7 +510,14 @@ const RUBRIC: [string, number, string][] = [
         ['Modelled runtime', `${r.runtimeHours.toFixed(1)} h (${r.runtimeDays.toFixed(2)} days), not a measured battery life`],
       ];
       out.replaceChildren(...pairs.flatMap(([k, v]) => [el('dt', {}, k), el('dd', {}, v)]));
-      sensBody.replaceChildren(...sensitivity(core, traffic).map((s) => el('tr', {}, el('th', { scope: 'row' }, s.label), el('td', {}, `${s.averageCurrentMa.toFixed(3)} mA`), el('td', {}, `${s.runtimeHours.toFixed(1)} h`))));
+      sensBody.replaceChildren(
+        ...sensitivity(core, traffic).map((row) =>
+          el('tr', {}, el('th', { scope: 'row' }, row.label),
+            ...(row.unavailable
+              ? [el('td', { colspan: '2' }, row.unavailable)]
+              : [el('td', {}, `${row.averageCurrentMa!.toFixed(3)} mA`), el('td', {}, `${row.runtimeHours!.toFixed(1)} h`)])),
+        ),
+      );
     }
 
     // ---------- log ----------

@@ -10,9 +10,9 @@
 
 | Function | Contract |
 |---|---|
-| `batteryRuntime(BatteryInput)` | Inputs: `capacityMah > 0`; `batteryVoltage` and `loadVoltage` > 0 V; `usableFraction` and `converterEfficiency` in (0, 1]; `coldDerating` in [0, 1); currents ≥ 0 mA; `gpsDutyFraction` in [0, 1]; `duty {tx, rx, sleep}` each in [0, 1] and summing to 1 (±1e-9). Average current = tx·Itx + rx·Irx + sleep·Isleep + gps·Igps and must be > 0. Usable energy Wh = mAh/1000 × V_bat × usable × (1 − cold). Runtime h = Wh × efficiency ÷ (mA/1000 × V_load). |
+| `batteryRuntime(BatteryInput)` | Inputs: `capacityMah > 0`; `batteryVoltage` and `loadVoltage` > 0 V; `usableFraction` and `converterEfficiency` in (0, 1]; `coldDerating` in [0, 1); currents 0–100000 mA; `gpsDutyFraction` in [0, 1]; `duty {tx, rx, sleep}` each in [0, 1] and summing to 1 (±1e-9). Average current = tx·Itx + rx·Irx + sleep·Isleep + gps·Igps and must be > 0. Usable energy Wh = mAh/1000 × V_bat × usable × (1 − cold). Runtime h = Wh × efficiency ÷ (mA/1000 × V_load). |
 | `dutyFromTraffic(TrafficInput)` | `packetsPerHour` is a whole number ≥ 0 (the node's own plus relayed packets); `airtime` is a valid Lab A `AirtimeInput`; `listeningShare` in [0, 1]. tx = packets × packetMs ÷ 3,600,000 and must be ≤ 1. rx = (1 − tx)·listening; sleep = (1 − tx)·(1 − listening). |
-| `sensitivity(core, traffic)` | Rows: base, receive current +50%, GPS +10% of time (30 mA if none set), traffic ×2 (omitted if that exceeds 100% airtime), cold = 1 − (1 − cold)·0.8. Every variant is labelled assumed. |
+| `sensitivity(core, traffic)` | Always 5 rows: base, receive current +50%, GPS +10% of time (30 mA if none set), traffic ×2, cold = 1 − (1 − cold)·0.8. Every variant is labelled assumed. The base must be valid, otherwise it throws. A derived variant whose changed input leaves the supported range (current > 100000 mA, GPS time > 100%, airtime > 100%) is returned as `{ averageCurrentMa: null, runtimeHours: null, unavailable: 'Not computed: …' }`, with nothing clamped or dropped. Only `RangeError` is turned into an unavailable row; any other error still propagates. |
 | `parseBatteryInputs(Record<string,string>)` | Strict text → number parsing (malformed text becomes NaN and fails validation). `*Pct` fields are divided by 100. DE follows the Lab A 16 ms rule. |
 | `channelShare(packetMs, intervalS)` | packetMs ÷ (interval × 1000); both must be > 0. |
 
@@ -47,7 +47,14 @@
   - `corrupt` or `version`: existing data is unreadable. It is left untouched, and `save` returns false until `discard()`;
   - `write-failed`: `setItem` threw, so the store switches to memory;
   - `null`: no problem.
-- `validateWorkspace` checks shape only, so unfinished drafts reload. Invalid numeric text in planner heights becomes `null` when saved.
+- `validateWorkspace` enforces the structure the page needs before a saved draft is used:
+  - 3–5 nodes with IDs `A`… in order;
+  - every link between two different known nodes, with no repeated pair;
+  - every key in `INPUT_KEYS` present as a string;
+  - log rows that pass `validateRow`;
+  - capstone fields of the right types.
+
+  It does not require finished content: blank text, unparsable numbers and an unfinished capstone still reload. A draft failing any structural rule is treated as `corrupt`: its bytes are left untouched and autosave stays paused until `discard()`. Invalid numeric text in planner heights becomes `null` when saved.
 
 ## Fixtures
 

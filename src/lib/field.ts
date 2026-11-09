@@ -64,7 +64,7 @@ export function validateBattery(input: unknown): FieldError[] {
   need(inRange(v.converterEfficiency, 0, 1, true), 'converterEfficiency', 'Efficiency must be above 0% and at most 100%.');
   need(finite(v.coldDerating) && (v.coldDerating as number) >= 0 && (v.coldDerating as number) < 1, 'coldDerating', 'Cold derating must be 0% or more and below 100%.');
   for (const f of ['txCurrentMa', 'rxCurrentMa', 'sleepCurrentMa', 'gpsCurrentMa'])
-    need(inRange(v[f], 0, 1e5), f, 'Enter a current of 0 mA or more.');
+    need(inRange(v[f], 0, 1e5), f, 'Enter a current from 0 to 100000 mA.');
   need(inRange(v.gpsDutyFraction, 0, 1), 'gpsDutyFraction', 'GPS time must be between 0% and 100%.');
   const d = v.duty as Duty | undefined;
   const dutyOk =
@@ -138,28 +138,42 @@ export function dutyFromTraffic(t: TrafficInput): Duty & { packetMs: number; txS
 export interface SensitivityRow {
   key: 'base' | 'rx' | 'gps' | 'traffic' | 'cold';
   label: string;
-  averageCurrentMa: number;
-  runtimeHours: number;
+  /** null when this derived variant falls outside the supported inputs (see `unavailable`). */
+  averageCurrentMa: number | null;
+  runtimeHours: number | null;
+  /** Why the variant was not computed; absent when it was. */
+  unavailable?: string;
 }
 
-/** One-assumption-at-a-time variants from the same base. All changes are synthetic assumptions. */
+/**
+ * One-assumption-at-a-time variants from the same base. All changes are synthetic assumptions.
+ * The base must be valid (it throws otherwise). A derived variant whose changed input leaves the
+ * supported range becomes an unavailable row with the reason; it is never clamped or dropped.
+ */
 export function sensitivity(core: BatteryCore, traffic: TrafficInput): SensitivityRow[] {
-  const run = (key: SensitivityRow['key'], label: string, b: BatteryCore, t: TrafficInput) => {
-    const r = batteryRuntime({ ...b, duty: dutyFromTraffic(t) });
-    return { key, label, averageCurrentMa: r.averageCurrentMa, runtimeHours: r.runtimeHours };
+  const compute = (b: BatteryCore, t: TrafficInput) => batteryRuntime({ ...b, duty: dutyFromTraffic(t) });
+  const base = compute(core, traffic);
+  const variant = (key: SensitivityRow['key'], label: string, what: string, b: BatteryCore, t: TrafficInput): SensitivityRow => {
+    try {
+      const r = compute(b, t);
+      return { key, label, averageCurrentMa: r.averageCurrentMa, runtimeHours: r.runtimeHours };
+    } catch (e) {
+      if (!(e instanceof RangeError)) throw e;
+      return { key, label, averageCurrentMa: null, runtimeHours: null, unavailable: `Not computed: ${what}, outside what this calculator accepts. ${e.message}` };
+    }
   };
-  const rows = [run('base', 'Base (your synthetic inputs)', core, traffic)];
-  rows.push(run('rx', 'Receive current +50% (assumed)', { ...core, rxCurrentMa: core.rxCurrentMa * 1.5 }, traffic));
-  if (core.gpsDutyFraction + 0.1 <= 1)
-    rows.push(run('gps', `GPS on 10% more of the time at ${core.gpsCurrentMa || 30} mA (assumed)`,
-      { ...core, gpsCurrentMa: core.gpsCurrentMa || 30, gpsDutyFraction: core.gpsDutyFraction + 0.1 }, traffic));
-  try {
-    rows.push(run('traffic', `Twice the transmitted packets, ${traffic.packetsPerHour * 2}/h (assumed)`, core, { ...traffic, packetsPerHour: traffic.packetsPerHour * 2 }));
-  } catch {
-    // doubling would need over 100% airtime; the variant is omitted rather than clamped
-  }
-  rows.push(run('cold', 'Cold: 20% less usable capacity (assumed, not measured)', { ...core, coldDerating: 1 - (1 - core.coldDerating) * 0.8 }, traffic));
-  return rows;
+  const rx = core.rxCurrentMa * 1.5;
+  const gpsCurrent = core.gpsCurrentMa || 30;
+  const gpsDuty = core.gpsDutyFraction + 0.1;
+  const pph = traffic.packetsPerHour * 2;
+  return [
+    { key: 'base', label: 'Base (your synthetic inputs)', averageCurrentMa: base.averageCurrentMa, runtimeHours: base.runtimeHours },
+    variant('rx', 'Receive current +50% (assumed)', `receive current would be ${rx} mA`, { ...core, rxCurrentMa: rx }, traffic),
+    variant('gps', `GPS on 10% more of the time at ${gpsCurrent} mA (assumed)`, `GPS would be on ${Math.round(gpsDuty * 100)}% of the time`,
+      { ...core, gpsCurrentMa: gpsCurrent, gpsDutyFraction: gpsDuty }, traffic),
+    variant('traffic', `Twice the transmitted packets, ${pph}/h (assumed)`, `${pph} packets per hour`, core, { ...traffic, packetsPerHour: pph }),
+    variant('cold', 'Cold: 20% less usable capacity (assumed, not measured)', 'the derated capacity', { ...core, coldDerating: 1 - (1 - core.coldDerating) * 0.8 }, traffic),
+  ];
 }
 
 /** Share of the channel one sender occupies at a fixed send interval (test-cadence planning). */
@@ -520,16 +534,34 @@ export interface Workspace {
 const isStr = (v: unknown) => typeof v === 'string';
 const isRec = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
 
-/** Shape check for stored data: types only, so an unfinished draft still reloads. */
+/** Every battery/traffic form field; a stored workspace must carry all of them as text. */
+export const INPUT_KEYS = [
+  'capacityMah', 'batteryVoltage', 'usablePct', 'coldPct', 'efficiencyPct', 'loadVoltage', 'txCurrentMa', 'rxCurrentMa',
+  'sleepCurrentMa', 'gpsCurrentMa', 'gpsPct', 'packetsPerHour', 'listeningPct', 'sf', 'bandwidthKHz', 'codingRate',
+  'payloadBytes', 'preambleSymbols', 'explicitHeader', 'crc',
+] as const;
+
+/**
+ * Check for stored data. Structure the page relies on is enforced: 3–5 nodes lettered A… in order,
+ * links between two different known nodes with no repeated pair, and every input key present as text.
+ * Content is not: blank text, unparsable numbers and an unfinished capstone still reload.
+ */
 export function validateWorkspace(w: unknown): w is Workspace {
   if (!isRec(w) || w.version !== 1 || !isRec(w.planner) || !isRec(w.inputs) || !Array.isArray(w.log) || !isRec(w.capstone)) return false;
   const p = w.planner as unknown as Planner;
-  if (!Array.isArray(p.nodes) || !Array.isArray(p.links)) return false;
-  const nodeOk = (n: unknown) =>
-    isRec(n) && ['id', 'label', 'role', 'antenna', 'power', 'notes'].every((k) => isStr(n[k])) && (n.heightM === null || finite(n.heightM));
-  const linkOk = (l: unknown) => isRec(l) && ['a', 'b', 'assumption', 'note'].every((k) => isStr(l[k]));
-  if (!p.nodes.every(nodeOk) || !p.links.every(linkOk)) return false;
-  if (!Object.values(w.inputs).every(isStr)) return false;
+  if (!Array.isArray(p.nodes) || !Array.isArray(p.links) || p.nodes.length < 3 || p.nodes.length > 5) return false;
+  const nodeOk = (n: unknown, i: number) =>
+    isRec(n) && n.id === NODE_IDS[i] && ['label', 'role', 'antenna', 'power', 'notes'].every((k) => isStr(n[k])) && (n.heightM === null || finite(n.heightM));
+  if (!p.nodes.every(nodeOk)) return false;
+  const ids = new Set(p.nodes.map((n) => n.id));
+  const pairs = new Set<string>();
+  for (const l of p.links as unknown[]) {
+    if (!isRec(l) || !['a', 'b', 'assumption', 'note'].every((k) => isStr(l[k]))) return false;
+    const pair = [l.a, l.b].sort().join('-');
+    if (!ids.has(l.a as string) || !ids.has(l.b as string) || l.a === l.b || pairs.has(pair)) return false;
+    pairs.add(pair);
+  }
+  if (!INPUT_KEYS.every((k) => isStr((w.inputs as Record<string, unknown>)[k])) || !Object.values(w.inputs).every(isStr)) return false;
   if (!w.log.every((r) => isRec(r) && !validateRow(r as unknown as LogRow).length)) return false;
   const c = w.capstone;
   return (
