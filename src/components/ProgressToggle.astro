@@ -1,0 +1,53 @@
+---
+interface Props {
+  /** Stable page id, e.g. "start-here". */
+  page: string;
+}
+const { page } = Astro.props;
+---
+
+<div class="progress-toggle not-content" data-progress-toggle data-page={page}>
+  <noscript>
+    <p class="progress-msg">Marking pages as read needs JavaScript. Everything on this page is readable without it.</p>
+  </noscript>
+  <button type="button" class="btn" aria-pressed="false" hidden>Mark this page as read</button>
+  <p class="progress-msg" data-msg hidden></p>
+</div>
+
+<script>
+  import { progress as store, notify, PROGRESS_EVENT } from '../lib/browser-progress.ts';
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-progress-toggle]')) {
+    const page = root.dataset.page!;
+    const btn = root.querySelector('button')!;
+    const msg = root.querySelector<HTMLElement>('[data-msg]')!;
+    const render = () => {
+      const done = store.has(page);
+      btn.setAttribute('aria-pressed', String(done));
+      btn.textContent = done ? 'Read ✓ (click to undo)' : 'Mark this page as read';
+      msg.hidden = store.status === 'saved';
+      msg.textContent = "This browser isn't letting the site save progress, so marks last only until you leave this page.";
+    };
+    btn.addEventListener('click', () => {
+      store.mark(page, !store.has(page));
+      render();
+      notify();
+    });
+    document.addEventListener(PROGRESS_EVENT, render);
+    btn.hidden = false;
+    render();
+  }
+</script>
+
+<style>
+  .progress-toggle {
+    margin-block: 2rem 1rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .progress-msg {
+    color: var(--sl-color-gray-3);
+    font-size: var(--sl-text-sm);
+    margin-top: 0.5rem;
+  }
+</style>

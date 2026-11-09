@@ -1,0 +1,80 @@
+---
+import { MODULES, TRACK_LABELS } from '../lib/curriculum.ts';
+
+interface Props {
+  headingLevel?: 'h2' | 'h3';
+}
+const { headingLevel = 'h3' } = Astro.props;
+const H = headingLevel;
+---
+
+<div class="outline not-content">
+  <p class="outline-status">
+    <strong>Planned outline.</strong> None of these modules is written yet. Each one
+    is published only after its sources are checked and the lesson is reviewed.
+  </p>
+  <ol class="modules">
+    {MODULES.map((m) => (
+      <li class={`module track-${m.track}`}>
+        <span class="module-num" aria-hidden="true">{m.number}</span>
+        <div>
+          <H class="module-title"><span class="visually-hidden">Module {m.number}: </span>{m.title}</H>
+          <p class="module-meta">{TRACK_LABELS[m.track]}, planned, not yet available</p>
+          <p class="module-goal">{m.goal}</p>
+        </div>
+      </li>
+    ))}
+  </ol>
+</div>
+
+<style>
+  .outline-status {
+    max-width: 62ch;
+  }
+  .modules {
+    list-style: none;
+    padding: 0;
+    margin: 1.5rem 0 0;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .module {
+    display: grid;
+    grid-template-columns: 3rem 1fr;
+    gap: 1rem;
+    padding: 1rem 0;
+    margin: 0;
+    border-bottom: 1px solid var(--sl-color-gray-5);
+  }
+  .module-num {
+    font-size: var(--sl-text-2xl);
+    line-height: 1.1;
+    color: var(--sl-color-gray-3);
+    font-variant-numeric: tabular-nums;
+  }
+  .module-title {
+    font-size: var(--sl-text-lg);
+    margin: 0;
+    color: var(--sl-color-white);
+  }
+  .module-meta {
+    font-size: var(--sl-text-sm);
+    color: var(--sl-color-gray-3);
+    margin: 0.125rem 0 0.25rem;
+  }
+  .module-goal {
+    margin: 0;
+    max-width: 62ch;
+  }
+  /* Tracks: equal weight; told apart by the text label and border style, color only reinforces. */
+  .track-meshtastic {
+    border-inline-start: 3px solid var(--mra-track-a);
+    padding-inline-start: 0.75rem;
+  }
+  .track-meshcore {
+    border-inline-start: 3px double var(--mra-track-b);
+    padding-inline-start: 0.75rem;
+  }
+  .track-shared {
+    padding-inline-start: calc(0.75rem + 3px);
+  }
+</style>

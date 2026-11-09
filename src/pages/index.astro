@@ -1,0 +1,52 @@
+---
+import StarlightPage from '@astrojs/starlight/components/StarlightPage.astro';
+import LayerTrace from '../components/LayerTrace.astro';
+
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
+---
+
+<StarlightPage
+  frontmatter={{
+    title: 'Mesh Radio Academy',
+    description: 'An independent, hardware-optional course on Meshtastic and MeshCore. Start by sending a simulated message.',
+    template: 'splash',
+  }}
+>
+  <p class="lede">
+    Learn how off-grid mesh radios carry a message, starting with one you send
+    yourself. No radio needed.
+  </p>
+
+  <LayerTrace />
+
+  <div class="next">
+    <a class="btn btn-primary start" href={`${base}start-here/`}>Start learning</a>
+    <p>
+      The course is being built in the open. The lesson modules are still
+      being researched; see the <a href={`${base}curriculum/`}>planned outline</a>
+      and <a href={`${base}about/`}>what is ready today</a>.
+    </p>
+  </div>
+</StarlightPage>
+
+<style>
+  .lede {
+    font-size: var(--sl-text-xl);
+    max-width: 40ch;
+    color: var(--sl-color-gray-1);
+  }
+  .next {
+    margin-top: 2.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--sl-color-gray-5);
+  }
+  .start {
+    display: inline-flex;
+    align-items: center;
+    text-decoration: none;
+  }
+  .next p {
+    max-width: 62ch;
+    color: var(--sl-color-gray-3);
+  }
+</style>

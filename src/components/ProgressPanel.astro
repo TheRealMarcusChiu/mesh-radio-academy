@@ -1,0 +1,55 @@
+---
+// Summary of browser-local progress with a reset control.
+---
+
+<section class="progress-panel not-content" data-progress-panel aria-labelledby="progress-title">
+  <h2 id="progress-title">Your progress</h2>
+  <p>
+    Progress is a list of pages you have marked as read. It is stored only in
+    this browser, never sent anywhere, and you can clear it at any time.
+  </p>
+  <noscript><p>Tracking progress needs JavaScript. The course itself does not.</p></noscript>
+  <p data-summary aria-live="polite" hidden></p>
+  <button type="button" class="btn" data-reset hidden>Reset progress</button>
+</section>
+
+<script>
+  import { progress as store, PROGRESS_EVENT, notify } from '../lib/browser-progress.ts';
+
+  for (const root of document.querySelectorAll<HTMLElement>('[data-progress-panel]')) {
+    const summary = root.querySelector<HTMLElement>('[data-summary]')!;
+    const reset = root.querySelector<HTMLButtonElement>('[data-reset]')!;
+    const render = (note = '') => {
+      const n = store.list().length;
+      const where = store.status === 'saved' ? 'saved in this browser' : 'kept only until you leave (this browser blocks saving)';
+      summary.textContent = `${note}${n === 0 ? 'No pages marked as read yet' : `${n} page${n === 1 ? '' : 's'} marked as read`}, ${where}.`;
+      reset.disabled = n === 0;
+    };
+    reset.addEventListener('click', () => {
+      if (!confirm('Clear all reading marks stored in this browser?')) return;
+      store.reset();
+      notify();
+      render('Progress cleared. ');
+    });
+    document.addEventListener(PROGRESS_EVENT, () => render());
+    summary.hidden = false;
+    reset.hidden = false;
+    render();
+  }
+</script>
+
+<style>
+  .progress-panel {
+    margin-block: 2rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--sl-color-gray-5);
+    border-radius: 0.25rem;
+  }
+  .progress-panel h2 {
+    font-size: var(--sl-text-xl);
+    margin: 0 0 0.5rem;
+  }
+  .progress-panel p {
+    margin-block: 0.5rem;
+  }
+</style>
