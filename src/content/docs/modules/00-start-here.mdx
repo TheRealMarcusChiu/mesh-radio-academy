@@ -12,7 +12,7 @@ lesson:
   estimatedMinutes: 20
   prerequisites: []
   difficulty: beginner
-  sourceIds: [LW-C01, LW-C02, LW-C03, MT-C07, MT-C08, MC-005, MC-018, MT-C22]
+  sourceIds: [LW-C01, LW-C02, LW-C03, LW-C04, MT-C07, MT-C08, MC-005, MC-018, MT-C22]
   baseline: 'Meshtastic 2.7.26.54e0d8d Beta and MeshCore 1.18.0'
   reviewed: 2026-11-09
 ---
@@ -31,7 +31,7 @@ up, so here they are with one more term you will meet: LoRaWAN.
 
 | Term | What it is | On the trace above |
 |---|---|---|
-| **Radio settings** | The frequency, bandwidth, spreading factor and coding rate a radio transmits and listens on. Both ends must match to hear each other. | Not shown; both radios agree. |
+| **Radio settings** | The frequency, bandwidth, spreading factor and coding rate a radio transmits and listens on. Matching them puts both radios on the same channel. To accept a whole frame, the receiver also needs compatible framing, such as the same sync word. <Cite ids="LW-C04" /> | Not shown; both radios agree. |
 | **LoRa modulation** | The way the radio turns bits into a radio signal and back. It is a *physical layer*: it carries bits, not messages. <Cite ids="LW-C01" /> | The wavy hop from radio A to radio B. |
 | **Mesh protocol** | The packet format and forwarding rules on top of LoRa: who sent it, who should relay it, how duplicates are dropped. Meshtastic and MeshCore each have their own. <Cite ids="LW-C02" /> | Radio A builds a packet; radio B opens it. |
 | **Phone–radio link** | A short local link, often Bluetooth Low Energy (BLE) or USB, carrying an *app protocol* between your phone and your own radio. It is not the over-the-air packet. <Cite ids="LW-C03 MC-018" /> | The dotted hops at each end. |
@@ -41,13 +41,21 @@ up, so here they are with one more term you will meet: LoRaWAN.
 
 Two neighbors each buy the same model of radio. Rin installs Meshtastic, Dev installs MeshCore, and by
 coincidence both radios are set to the same frequency, bandwidth, spreading factor and coding rate.
+Rin sends "hello" from the Meshtastic app. There are three separate questions about what reaches Dev:
 
-1. Rin sends "hello" from the Meshtastic app. Rin's radio wraps it in a Meshtastic packet and transmits.
-2. Dev's radio is listening on the same settings, so it **does** demodulate the LoRa signal. The bits arrive.
-3. Dev's MeshCore firmware tries to read those bits as a MeshCore packet. The header and layout do not
-   match its format, so it drops them. Nothing appears in Dev's app. <Cite ids="LW-C02" />
+1. **Is there signal on Dev's channel?** Yes. Rin's transmission lands on the channel Dev's radio is tuned
+   to, so Dev's radio can notice radio activity there.
+2. **Does Dev's radio receive a complete frame?** Those four settings alone don't decide this. A LoRa
+   receiver also checks framing details, such as the sync word, before it hands a frame to the firmware.
+   The two projects set their sync word in different code: Meshtastic sets its own value, while MeshCore
+   passes a named constant from the RadioLib radio library. This course hasn't tested what one stock radio does with the other's
+   transmissions, so don't assume a frame arrives. <Cite ids="LW-C04" />
+3. **Could Dev's app show the message?** Even in a *hypothetical* setup where every framing detail matched and
+   Dev's radio passed up the frame's bytes, Dev's MeshCore firmware would try to read them as a MeshCore
+   packet. The two packet formats differ, so nothing would appear in Dev's app. <Cite ids="LW-C02" />
 
-Matching radio settings let the signal through. Matching protocols are needed for the message to get through.
+Matching radio settings put the signal on the same channel. Receiving a frame also needs compatible framing,
+and getting the message across needs the same mesh protocol.
 
 <LayerStack />
 
@@ -72,17 +80,18 @@ traffic, and later lessons show how to measure it rather than assume it.
 
 ## Predict before you check
 
-Without scrolling to the answers: Dev changes the MeshCore radio's frequency so it no longer matches Rin's.
-Rin sends "hello" again. At which layer does it fail now, and is that a different failure from the worked
-example?
+Without scrolling to the answers: Dev retunes the MeshCore radio to a frequency well outside the channel
+Rin transmits on, so Rin's signal no longer falls within the band Dev's radio is listening to. Rin sends
+"hello" again. Where does it fail now, and how is that different from the worked example?
 
 <details>
 <summary>Answer</summary>
 
-It now fails one layer lower. With mismatched radio settings, Dev's radio never demodulates the signal at all,
-so nothing reaches the protocol layer. In the worked example the bits *did* arrive and were rejected by
-the protocol. Both look the same to Dev ("no message"), which is why later troubleshooting lessons check
-the layers in order, from the bottom up.
+It now fails at the very bottom: Rin's signal isn't on Dev's channel, so there is nothing for Dev's radio to
+receive. No frame forms and nothing reaches the protocol layer. In the worked example the signal *was* on
+Dev's channel; what happened next depended on framing, and even with matching framing the protocol layer
+would have rejected it. To Dev every case looks the same ("no message"). That is why later troubleshooting
+lessons check the layers in order, from the bottom up.
 </details>
 
 ## Knowledge check
@@ -105,8 +114,9 @@ but neither is LoRaWAN. <Cite ids="LW-C01" />
 <details>
 <summary>3. A friend says: "My radio picked up a signal from a MeshCore node, so my Meshtastic app should show its messages." What is wrong?</summary>
 
-Hearing a signal only proves the bottom layers matched. Showing a message needs the same mesh protocol,
-because each system defines its own packet format. <Cite ids="LW-C02" />
+Picking up a signal only shows there was energy on a shared channel. Receiving a whole frame also needs
+compatible framing, such as the sync word, and showing a message needs the same mesh protocol, because
+each system defines its own packet format. <Cite ids="LW-C04 LW-C02" />
 </details>
 
 ## Choose your learning path
@@ -137,7 +147,7 @@ All three paths use the same lessons. The difference is what you do in the optio
 
 ## References
 
-- Claims used on this page: <Cite ids="LW-C01 LW-C02 LW-C03 MT-C07 MT-C08 MC-005 MC-018 MT-C22" />
+- Claims used on this page: <Cite ids="LW-C01 LW-C02 LW-C03 LW-C04 MT-C07 MT-C08 MC-005 MC-018 MT-C22" />
 - [Baselines and compatibility](../../reference/baselines/) for the exact firmware versions behind these claims.
 
 ## Next

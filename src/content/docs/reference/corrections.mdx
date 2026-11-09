@@ -8,6 +8,20 @@ import Cite from '../../../components/Cite.astro';
 The course follows the pinned code when official prose and implementation disagree, and records each case
 here. Newest entries first.
 
+## 2026-11-09: review corrections to the first lessons
+
+- **Module 00 worked example narrowed.** It previously said a MeshCore radio on the same frequency,
+  bandwidth, spreading factor and coding rate *does* demodulate a Meshtastic transmission and then rejects
+  its header. Those four settings don't establish frame reception: framing such as the sync word also has to
+  match, and the two projects set theirs in different code. The example now separates signal on the
+  channel, frame reception (not established) and protocol interpretation, where native messages are
+  incompatible. <Cite ids="LW-C04 LW-C02" />
+- **Fresnel formula sourced.** The first-Fresnel-zone radius now cites ITU-R P.526-16 Annex 1 §2.1,
+  eqs (2)–(3), rather than only the recommendation's title. <Cite ids="RF-C11 RF-S05" />
+- **Routing playground input validation tightened.** A scenario's `id` must be a string, route tables must be
+  records rather than arrays, and duplicate directed links are rejected so one transmission can't count as
+  two receptions. No valid scenario's results change.
+
 ## 2026-11-09: first lessons and evidence ledger
 
 **Documentation versus pinned code**

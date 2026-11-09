@@ -227,6 +227,24 @@ test('validateScenario rejects malformed serialized configs', () => {
   for (const cfg of bad) assert.throws(() => validateScenario(cfg), /scenario/i, JSON.stringify(cfg));
 });
 
+test('validateScenario enforces the frozen id, route-table and duplicate-edge contract', () => {
+  const mt = mtDiamond();
+  const mc = mcKnownPath();
+  const { id: _omit, ...noId } = mt;
+  const bad: [string, unknown][] = [
+    ['missing id', noId],
+    ['numeric id', { ...mt, id: 42 }],
+    ['outPaths as array', { ...mc, outPaths: [] }],
+    ['nested route table as array', { ...mc, outPaths: { A: [['B']], D: { A: ['B'] } } }],
+    ['duplicate directed edge', { ...mt, links: [...mt.links, { from: 'A', to: 'B' }] }],
+  ];
+  for (const [name, cfg] of bad) assert.throws(() => validateScenario(cfg), /Invalid scenario/, name);
+  // Controls: the opposite direction is a different edge, and the fixtures stay valid.
+  assert.doesNotThrow(() => validateScenario(mt));
+  assert.doesNotThrow(() => validateScenario(mc));
+  assert.ok(mt.links.some((l) => l.from === 'B' && l.to === 'A'));
+});
+
 test('simulate refuses an unknown action instead of ignoring it', () => {
   assert.throws(() => simulate(mtDiamond(), [{ type: 'teleport' } as never]), /action/i);
   assert.throws(() => simulate(mtDiamond(), [{ type: 'reset-path', node: 'A', dest: 'D' }]), /action/i);

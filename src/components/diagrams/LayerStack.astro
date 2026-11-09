@@ -1,46 +1,50 @@
 ---
-// Two radios with matching LoRa settings but different native mesh protocols.
-const rows = [
+// Two radios on the same LoRa channel settings but different native mesh protocols.
+type Row = { label: string; note: string; kind?: 'ok' | 'bad' | 'unknown' };
+const rows: Row[] = [
   { label: 'App', note: 'separate apps' },
   { label: 'Phone–radio link', note: 'local only' },
-  { label: 'Mesh protocol', note: 'different format', bad: true },
-  { label: 'LoRa modulation', note: 'same', ok: true },
-  { label: 'Radio settings', note: 'same', ok: true },
+  { label: 'Mesh protocol', note: 'different format', kind: 'bad' },
+  { label: 'Framing', note: 'not shown to match', kind: 'unknown' },
+  { label: 'Channel settings', note: 'same', kind: 'ok' },
 ];
 const y = (i: number) => 14 + i * 58;
 ---
 
 <figure class="diagram not-content">
   <svg viewBox="0 0 360 310" role="img" aria-labelledby="ls-title ls-desc">
-    <title id="ls-title">Two radios: same radio layers, different mesh protocols</title>
+    <title id="ls-title">Two radios: same channel settings, framing not shown to match, different mesh protocols</title>
     <desc id="ls-desc">
-      Left stack: a Meshtastic node. Right stack: a MeshCore node. The bottom two layers, radio settings and
-      LoRa modulation, match, so each radio can pick up the other's signal. The mesh protocol layer differs,
-      so neither can read the other's packets. The app and phone link layers are separate on each side.
+      Left stack: a Meshtastic node. Right stack: a MeshCore node. The bottom layer, channel settings
+      (frequency, bandwidth, spreading factor, coding rate), matches, so each radio's signal lands on the
+      other's channel. The framing layer, which includes the sync word, is set in different code by the two
+      projects and is not shown to match, so receiving a whole frame is not established. The mesh protocol
+      layer differs, so even a received frame could not be read as a native message. The app and phone link
+      layers are separate on each side.
     </desc>
     <text x="64" y="10" class="hdr" text-anchor="middle">Meshtastic node</text>
     <text x="296" y="10" class="hdr" text-anchor="middle">MeshCore node</text>
     {rows.map((r, i) => (
       <g>
-        <rect x="4" y={y(i) + 4} width="120" height="44" rx="3" class:list={['box', { bad: r.bad }]} />
+        <rect x="4" y={y(i) + 4} width="120" height="44" rx="3" class:list={['box', r.kind]} />
         <text x="64" y={y(i) + 31} text-anchor="middle">{r.label}</text>
-        <rect x="236" y={y(i) + 4} width="120" height="44" rx="3" class:list={['box', { bad: r.bad }]} />
+        <rect x="236" y={y(i) + 4} width="120" height="44" rx="3" class:list={['box', r.kind]} />
         <text x="296" y={y(i) + 31} text-anchor="middle">{r.label}</text>
-        {r.ok && <line x1="126" y1={y(i) + 26} x2="234" y2={y(i) + 26} class="link-ok" />}
-        {r.bad && (
+        {r.kind === 'ok' && <line x1="126" y1={y(i) + 26} x2="234" y2={y(i) + 26} class="link-ok" />}
+        {(r.kind === 'bad' || r.kind === 'unknown') && (
           <>
-            <line x1="126" y1={y(i) + 26} x2="168" y2={y(i) + 26} class="link-bad" />
-            <line x1="192" y1={y(i) + 26} x2="234" y2={y(i) + 26} class="link-bad" />
-            <text x="180" y={y(i) + 31} text-anchor="middle" class="mark">✕</text>
+            <line x1="126" y1={y(i) + 26} x2="168" y2={y(i) + 26} class:list={['link', r.kind]} />
+            <line x1="192" y1={y(i) + 26} x2="234" y2={y(i) + 26} class:list={['link', r.kind]} />
+            <text x="180" y={y(i) + 31} text-anchor="middle" class="mark">{r.kind === 'bad' ? '✕' : '?'}</text>
           </>
         )}
-        <text x="180" y={y(i) + (r.ok || r.bad ? 16 : 31)} text-anchor="middle" class="note">{r.note}</text>
+        <text x="180" y={y(i) + (r.kind ? 16 : 31)} text-anchor="middle" class="note">{r.note}</text>
       </g>
     ))}
   </svg>
   <figcaption>
-    Matching radio settings let the signal through. Different mesh protocols mean neither side can read
-    the other's messages.
+    Matching channel settings put the signal on the same channel. Receiving a frame also needs compatible
+    framing, and reading the message needs the same mesh protocol.
   </figcaption>
   <table>
     <caption>Text version of the diagram</caption>
@@ -48,9 +52,9 @@ const y = (i: number) => 14 + i * 58;
     <tbody>
       <tr><th scope="row">App</th><td>Different apps, each talking only to its own radio.</td></tr>
       <tr><th scope="row">Phone–radio link</th><td>Local Bluetooth or USB link on each side; never crosses between the two.</td></tr>
-      <tr><th scope="row">Mesh protocol</th><td><strong>Different.</strong> Each uses its own packet format, so neither can read the other's packets.</td></tr>
-      <tr><th scope="row">LoRa modulation</th><td>Same. Each radio can demodulate the other's signal.</td></tr>
-      <tr><th scope="row">Radio settings</th><td>Same frequency, bandwidth, spreading factor and coding rate in this example.</td></tr>
+      <tr><th scope="row">Mesh protocol</th><td><strong>Different.</strong> Each uses its own packet format, so even a received frame can't be read as a native message.</td></tr>
+      <tr><th scope="row">Framing (sync word, header, CRC)</th><td><strong>Not shown to match.</strong> The projects set their sync word in different code, and this course hasn't tested whether one stock radio accepts the other's frames.</td></tr>
+      <tr><th scope="row">Channel settings</th><td>Same frequency, bandwidth, spreading factor and coding rate in this example, so the signal lands on the other radio's channel.</td></tr>
     </tbody>
   </table>
 </figure>
@@ -88,13 +92,20 @@ const y = (i: number) => 14 + i * 58;
     stroke: var(--sl-color-gray-1);
     stroke-dasharray: 5 3;
   }
+  .box.unknown {
+    stroke: var(--sl-color-gray-2);
+    stroke-dasharray: 1 3;
+  }
   .link-ok {
     stroke: var(--sl-color-accent);
     stroke-width: 3;
   }
-  .link-bad {
+  .link {
     stroke: var(--sl-color-gray-3);
     stroke-width: 2;
     stroke-dasharray: 3 4;
+  }
+  .link.unknown {
+    stroke-dasharray: 1 4;
   }
 </style>

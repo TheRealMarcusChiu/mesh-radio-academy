@@ -10,7 +10,7 @@ Tests that pin the contract: `tests/routing.test.ts`.
 - **Teaching ticks, not milliseconds.** `time` increments once per transmission and only orders events. No firmware timing, airtime, collision or capture is modeled; see `OMITTED_EFFECTS`.
 - **Seeded tie order.** `seed` (an unsigned 32-bit integer) ranks nodes when several act "at the same time". `relayOrder(seed, ids)` exposes that ranking. It is a teaching assumption, not radio behavior (MT-C06).
 - **Every event cites evidence.** `claims` holds claim IDs from `research/claims.md`. `tests/ledger.test.ts` fails if an ID is undefined.
-- **Validate at the boundary.** `validateScenario(unknown)` throws `Invalid scenario: …` for any malformed serialized config. `simulate` and `createController` call it.
+- **Validate at the boundary.** `validateScenario(unknown)` throws `Invalid scenario: …` for any malformed serialized config, including a non-string `id`, array-shaped route tables and duplicate directed links. `simulate` and `createController` call it.
 
 ## Input: `ScenarioConfig`
 
@@ -37,6 +37,9 @@ interface MeshCoreScenario extends BaseScenario {
 }
 ```
 
+- `id` must be a string.
+- `links` is a set of directed edges. A repeated `(from, to)` pair is **rejected**, because it would make one transmission count as two receptions. `A→B` and `B→A` are different edges.
+- `outPaths` and each owner's table must be plain records (objects, not arrays); each path value is an array of known node IDs or `null`.
 - A Meshtastic `observer` is the node a lesson watches. It is **not** a destination address: a channel broadcast has none.
 - MeshCore `outPaths` lists only the intermediate relays. Each direction is stored independently and is never derived by reversing the other (MC-008).
 - Companions have repeat off and repeaters have repeat on. Configurable companion repeating (MC-004) is a future extension.

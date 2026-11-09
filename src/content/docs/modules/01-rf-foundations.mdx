@@ -50,10 +50,12 @@ and one horizontal lose signal to the mismatch. Simple path-loss formulas assume
 ## Line of sight and Fresnel clearance
 
 Seeing the other antenna is not the whole story. The radio energy travels in a fat, football-shaped region
-around the straight line between antennas, called the **first Fresnel zone**. Obstacles that poke into that
-region (rooftops, trees, terrain) can add loss even when you have visual line of sight.
+around the straight line between antennas, called the **first Fresnel zone**. The ITU's diffraction
+recommendation treats a path as plain line of sight only when no obstacle sits inside this zone. Obstacles
+that poke into it (rooftops, trees, terrain) can add loss even when you have visual line of sight.
 
-Its radius at a point d1 from one end and d2 from the other is r = √(λ · d1 · d2 / (d1 + d2)). <Cite ids="RF-C11" />
+Its radius at a point d1 from one end and d2 from the other is r = √(λ · d1 · d2 / (d1 + d2))
+(ITU-R P.526-16, Annex 1 §2.1, eq. 2, with n = 1). <Cite ids="RF-C11 RF-S05" />
 
 **Worked example.** A 2 km link at 915 MHz, measured at the midpoint (d1 = d2 = 1000 m):
 r = √(0.328 × 1000 × 1000 / 2000) ≈ **12.8 m**. The zone is about 12.8 m in radius halfway along, which is one

@@ -164,6 +164,7 @@ export function validateScenario(input: unknown): ScenarioConfig {
   const c = input as ScenarioConfig | null;
   if (!c || typeof c !== 'object') fail('not an object');
   if (c.version !== MODEL_VERSION) fail(`version must be ${MODEL_VERSION}`);
+  if (typeof c.id !== 'string') fail('id must be a string');
   if (!Number.isInteger(c.seed) || c.seed < 0 || c.seed > 0xffffffff) fail('seed must be an unsigned 32-bit integer');
   if (!Array.isArray(c.nodes) || !Array.isArray(c.links)) fail('nodes and links must be arrays');
   const ids = new Set<string>();
@@ -173,7 +174,14 @@ export function validateScenario(input: unknown): ScenarioConfig {
     ids.add(n.id);
   }
   const known = (id: unknown) => typeof id === 'string' && ids.has(id);
-  for (const l of c.links) if (!l || !known(l.from) || !known(l.to) || l.from === l.to) fail('link refers to an unknown node');
+  const edges = new Set<string>();
+  for (const l of c.links) {
+    if (!l || !known(l.from) || !known(l.to) || l.from === l.to) fail('link refers to an unknown node');
+    // One directed edge = one reception per transmission; a repeat would fake a second copy.
+    if (edges.has(`${l.from}>${l.to}`)) fail(`duplicate link ${l.from}→${l.to}`);
+    edges.add(`${l.from}>${l.to}`);
+  }
+  const isRecord = (v: unknown) => !!v && typeof v === 'object' && !Array.isArray(v);
 
   if (c.protocol === 'meshtastic') {
     for (const n of c.nodes) if (!MT_ROLES.includes(n.role)) fail(`unsupported Meshtastic role ${String(n.role)}`);
@@ -187,9 +195,9 @@ export function validateScenario(input: unknown): ScenarioConfig {
     }
     const t = c.traffic;
     if (t?.kind !== 'dm' || !known(t.from) || !known(t.to) || t.from === t.to) fail('dm traffic needs two different known nodes');
-    if (!c.outPaths || typeof c.outPaths !== 'object') fail('outPaths must be an object');
+    if (!isRecord(c.outPaths)) fail('outPaths must be a record');
     for (const [owner, table] of Object.entries(c.outPaths)) {
-      if (!known(owner) || !table || typeof table !== 'object') fail('outPaths owner unknown');
+      if (!known(owner) || !isRecord(table)) fail('outPaths entries must be records keyed by known owners');
       for (const [dest, path] of Object.entries(table)) {
         if (!known(dest)) fail('outPaths destination unknown');
         if (path !== null && (!Array.isArray(path) || !path.every(known))) fail('outPaths path names an unknown node');
